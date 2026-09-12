@@ -58,9 +58,12 @@ All skills work independently — `/research-stock`, `/strategy-theta-gang`, `/p
                                 DCA schedule, orders, position management, key dates, risk budget
                                 → PLAN-YYYY-MM-DD.md. Answers: "What should I do this week?"
                                 **POST-PLAN GATES (mandatory):**
+                                  → Scan ALL active sold options against harvest framework (close if >50% profit captured)
+                                  → Validate LEAP/option costs against account size (never >60% of account cash)
                                   → Run cash-check.py to validate orders vs account cash
                                   → Verify DCA $/day is proportional to conviction (higher conv ≥ equal $/day)
                                   → Sanity-check option orders (share counts, contract math, terminology)
+                                  → Flag off-plan positions that contradict conviction scores
                                   → Regenerate dashboard after any plan edit
 
 8. FINAL DASHBOARD            → .venv/bin/python3 scripts/watchlist.py
