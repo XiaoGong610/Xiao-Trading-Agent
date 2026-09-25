@@ -200,6 +200,15 @@ leaders.md         # ThetaGang.com top traders reference
 NOTES.md           # Project decisions, discussions, and TODOs
 ```
 
+### Repositories
+
+This repo is **public**. `research/` and `portfolio/` are gitignored and must never be committed here.
+
+- `research/` is a separate **private** repo (`XiaoGong610/Xiao-Trading-Research`) nested in this folder. Commit research changes from inside `research/`, not from the project root. HTML dashboards are ignored there too.
+- `portfolio/` is local-only and never goes to GitHub.
+- **Cloud sessions:** a SessionStart hook (`.claude/settings.json` → `scripts/cloud-setup.sh`) clones the research repo into `research/` and builds `.venv` from `requirements.txt`. It does nothing on local machines.
+- **New machine:** clone this repo, then `git clone https://github.com/XiaoGong610/Xiao-Trading-Research.git research`.
+
 ### Portfolio Account Files
 
 Account files (`portfolio/accounts/*.md`) are the source of truth for current holdings. Updated from user-shared brokerage screenshots — not auto-generated.

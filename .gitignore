@@ -7,3 +7,9 @@ portfolio/
 
 # Generated files
 charts/
+
+# macOS
+.DS_Store
+
+# Python bytecode
+__pycache__/

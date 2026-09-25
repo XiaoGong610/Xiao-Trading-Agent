@@ -1,0 +1,10 @@
+# Packages used by scripts/ (cloud sessions install these via scripts/cloud-setup.sh)
+# Requires Python 3.11+
+yfinance>=1.0
+pandas>=2.2
+numpy>=2.0
+requests>=2.31
+beautifulsoup4>=4.12
+plotly>=6.0
+matplotlib>=3.9
+# streamlit (scripts/app.py) is local-only — too heavy to install every cloud session
