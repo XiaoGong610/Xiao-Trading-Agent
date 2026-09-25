@@ -206,7 +206,7 @@ This repo is **public**. `research/` and `portfolio/` are gitignored and must ne
 
 - `research/` is a separate **private** repo (`XiaoGong610/Xiao-Trading-Research`) nested in this folder. Commit research changes from inside `research/`, not from the project root. HTML dashboards are ignored there too.
 - `portfolio/` is local-only and never goes to GitHub.
-- **Cloud sessions:** a SessionStart hook (`.claude/settings.json` → `scripts/cloud-setup.sh`) clones the research repo into `research/` and builds `.venv` from `requirements.txt`. It does nothing on local machines.
+- **Cloud sessions:** attach both repos. `scripts/cloud-setup.sh` links `research/` to the attached research clone and builds `.venv` from `requirements.txt`. It runs from the SessionStart hook (single-repo sessions) and the cloud environment's setup script (multi-repo sessions, where repo hooks don't load). It does nothing on local machines. If `research/` or `.venv` is missing in a cloud session, run `bash scripts/cloud-setup.sh`.
 - **New machine:** clone this repo, then `git clone https://github.com/XiaoGong610/Xiao-Trading-Research.git research`.
 
 ### Portfolio Account Files
