@@ -275,6 +275,7 @@ Set up Claude Code cloud triggers to run jobs on a recurring schedule.
 - [ ] Pre-earnings: auto-flag stocks in watchlist with earnings approaching within 7 days
 - [ ] Explore Claude Code `/schedule` for cron-based remote agent triggers
 - **Note (2026-07-18):** `watchlist.py --auto` outputs top N tickers for piping into scheduled agents. The infrastructure is built, just needs wiring to a cron trigger.
+- **Note (2026-09-24):** Cloud infrastructure ready and tested. Research lives in private repo `Xiao-Trading-Research`; start cloud sessions/routines with **both repos attached**. The cloud environment's setup script runs `scripts/cloud-setup.sh` (links `research/`, builds `.venv`); network access is Custom with finance data domains allowlisted. Verified: research readable, yfinance works, pushes to the research repo work. Next: create the first routine.
 
 ### 8. Visual Dashboard & Charts ✅ DONE (2026-06-18, updated 2026-07-18)
 Interactive visualizations to help interpret signals at a glance.
