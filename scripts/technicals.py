@@ -21,9 +21,10 @@ import yfinance as yf
 
 
 def calculate_rsi(series, window=14):
+    # Wilder's smoothing (standard RSI, matches broker/charting platforms)
     delta = series.diff()
-    gain = delta.where(delta > 0, 0).rolling(window=window).mean()
-    loss = (-delta.where(delta < 0, 0)).rolling(window=window).mean()
+    gain = delta.where(delta > 0, 0).ewm(alpha=1 / window, adjust=False, min_periods=window).mean()
+    loss = (-delta.where(delta < 0, 0)).ewm(alpha=1 / window, adjust=False, min_periods=window).mean()
     rs = gain / loss
     return 100 - (100 / (1 + rs))
 

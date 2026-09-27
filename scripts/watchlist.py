@@ -380,8 +380,8 @@ def get_market_data(tickers: list[str]) -> tuple[dict, dict, dict]:
         return prices, rsi_values, fwd_pe
 
     try:
-        # Use 1mo period for RSI calculation (need 14+ trading days)
-        data = yf.download(us_tickers, period="1mo", progress=False)
+        # 6mo of history so Wilder's RSI smoothing converges (1mo gave distorted values)
+        data = yf.download(us_tickers, period="6mo", progress=False)
         if len(us_tickers) == 1:
             try:
                 closes = data['Close'].dropna().tolist()
