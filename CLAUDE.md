@@ -209,6 +209,23 @@ This repo is **public**. `research/` and `portfolio/` are gitignored and must ne
 - **Cloud sessions:** attach both repos. `scripts/cloud-setup.sh` links `research/` to the attached research clone and builds `.venv` from `requirements.txt`. It runs from the SessionStart hook (single-repo sessions) and the cloud environment's setup script (multi-repo sessions, where repo hooks don't load). It does nothing on local machines. If `research/` or `.venv` is missing in a cloud session, run `bash scripts/cloud-setup.sh`.
 - **New machine:** clone this repo, then `git clone https://github.com/XiaoGong610/Xiao-Trading-Research.git research`.
 
+### Cloud vs Local
+
+Cloud sessions have **no portfolio data**: `portfolio/` never goes to GitHub. Detect cloud with `$CLAUDE_CODE_REMOTE = true`, or by `portfolio/accounts/` being missing. Use the cloud for unattended or recurring research, and keep anything that touches positions, cash, or orders local.
+
+| | Cloud | Local only |
+|---|---|---|
+| Skills | `/research-market`, `/research-sector`, `/research-stock` (position-free), `/research-stock-compare`, `/strategy-theta-gang leaders` | `/portfolio-review`, `/trading-plan`, `/plan-stock`, `/strategy-*` sizing, `/strategy-theta-gang pick\|roll`, `/watchlist` |
+| Scripts | `technicals`, `sentiment`, `macro`, `sector-momentum`, `sector-heatmap`, `crypto-cycle`, `bottleneck-scorecard`, `whale-tracker TICKER`, `watchlist.py --no-save` | `cash-check`, `correlation`, `dashboard`, `position-sizer`, `execution-tracker`, `whale-tracker --portfolio`, `watchlist.py` (saving) |
+| Output | Research files: thesis, conviction, entry levels | Position decisions, DCA amounts, orders, dashboards |
+
+**Rules in cloud sessions:**
+1. **No position claims.** Never state share counts, cost basis, options held, or account-specific actions, and never reconstruct them from older research entries (they go stale). Write `Position context: evaluate locally.` instead.
+2. **Conviction is business-only.** Portfolio concentration or exposure must not change a conviction score in the cloud; that is weighed locally.
+3. **Don't save `0-WATCHLIST.md`.** Use `watchlist.py --no-save`. Without account data it loses portfolio gaps and priorities; the local run is authoritative.
+4. **Hand off via branch.** Cloud work lands on a `claude/...` branch of the research repo. Merging it locally is the checkpoint where position decisions get made.
+5. **Refuse portfolio skills.** If a local-only skill is requested in the cloud, stop and say it must run locally. Don't approximate from old notes.
+
 ### Portfolio Account Files
 
 Account files (`portfolio/accounts/*.md`) are the source of truth for current holdings. Updated from user-shared brokerage screenshots — not auto-generated.
