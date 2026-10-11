@@ -147,29 +147,29 @@ These indicators tell you **where in the cycle you are**. Use them together — 
 - **What it measures:** BTC price against logarithmic regression bands with color zones (fire sale → bubble)
 - **⚠️ Caveat:** No fundamental basis — pure pattern-fitting. Fun to look at but not an investment tool.
 
-## Current Cycle Dashboard (Updated 2026-08-23)
+## Current Cycle Dashboard (Updated 2026-10-10)
 
 | Indicator | Reading | Zone | Signal |
 |-----------|---------|------|--------|
-| MVRV Z-Score | 1.48 | Fair to Moderate | Markup phase — hold/accumulate |
-| NUPL | 0.3240 | Hope/Fear | Early recovery or early decline |
-| Cycle Composite | 1.91/10 | Maximum Opportunity |  |
-| Realized Price | $52,421 | — | BTC cost basis of all holders |
-| BTC Price | $77,543 | — | +47.9% vs realized price |
+| MVRV Z-Score | 1.62 | Fair to Moderate | Markup phase — hold/accumulate |
+| NUPL | 0.3842 | Hope/Fear | Early recovery or early decline |
+| Cycle Composite | 2.34/10 | Opportunity | Good accumulation zone |
+| Realized Price | $53,295 | — | BTC cost basis of all holders |
+| BTC Price | $83,031 | — | +55.8% vs realized price |
 
 **Component Scores (0-10):**
 
 | Component | Score |
 |-----------|-------|
-| MVRV Z-Score | 1.9 |
-| Puell Multiple | 3.5 |
-| Reserve Risk | 0.8 |
-| S2F Deviation | 0.3 |
-| Power Law | 2.8 |
+| MVRV Z-Score | 2.3 |
+| Puell Multiple | 5.1 |
+| Reserve Risk | 0.9 |
+| S2F Deviation | 0.5 |
+| Power Law | 3.1 |
 | Rainbow | 1.4 |
-| LTH MVRV | 2.6 |
+| LTH MVRV | 3.1 |
 
-*Source: BGeometrics (bitcoin-data.com) | Updated: 2026-08-23*
+*Source: BGeometrics (bitcoin-data.com) | Updated: 2026-10-10*
 
 
 ## How to Use This Framework

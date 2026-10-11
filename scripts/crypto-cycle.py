@@ -110,9 +110,12 @@ def format_dashboard(metrics: dict) -> str:
     # BTC Price
     if metrics.get("price"):
         lines.append(f"  BTC Price:        ${metrics['price']:,.0f}")
-        lines.append(f"  Realized Price:   ${metrics['realized_price']:,.0f}")
-        premium = ((metrics['price'] / metrics['realized_price']) - 1) * 100
-        lines.append(f"  Premium/Discount: {premium:+.1f}% vs realized")
+        if metrics.get("realized_price"):
+            lines.append(f"  Realized Price:   ${metrics['realized_price']:,.0f}")
+            premium = ((metrics['price'] / metrics['realized_price']) - 1) * 100
+            lines.append(f"  Premium/Discount: {premium:+.1f}% vs realized")
+        else:
+            lines.append("  Realized Price:   unavailable (API rate limit or missing data)")
         lines.append("")
 
     # MVRV
