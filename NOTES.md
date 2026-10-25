@@ -309,7 +309,7 @@ Daily RSI tells one story; weekly/monthly tell another. Combining timeframes giv
 ### 9. Leveraged ETF Strategy ❌ DECIDED AGAINST (2026-06-18)
 ~~Evaluate leveraged single-stock ETFs as alternative to options.~~
 
-**Decision:** Leveraged ETFs (TSLL, CONL) are structurally bad for long-term holds due to daily-reset decay and path dependency. Portfolio review found $46K in TSLL across 3 accounts — recommended selling all. GoBig account learned the hard way: TSLL calls lost 73-96% even while TSLA was up. **Buy LEAPs on the underlying instead.** Not building a strategy skill for this.
+**Decision:** Leveraged ETFs (TSLL, CONL) are structurally bad for long-term holds due to daily-reset decay and path dependency. Calls on leveraged ETFs can lose most of their value even while the underlying rises (decay plus path dependency). **Buy LEAPs on the underlying instead.** Not building a strategy skill for this.
 
 ### 10. Tax Optimization 🔄 PARTIALLY DONE (2026-06-27)
 Maximize after-tax returns. Critical before year-end.

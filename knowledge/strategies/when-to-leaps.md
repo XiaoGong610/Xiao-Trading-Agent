@@ -28,7 +28,95 @@ Long-dated call options with **>9 months to expiry**. You're buying leveraged bu
 | **0.50-0.60** | ATM / balanced | Medium | Good conviction but want more leverage per dollar. Balanced decay vs. exposure. |
 | **0.30-0.40** | OTM / speculative | Lowest | Max leverage, highest risk. Only when thesis has explosive upside and you're sizing small. |
 
-**Default recommendation: 0.70 delta.** It gives you stock-like exposure at 15-25% of the capital. Go lower delta only when you're deliberately accepting higher risk for higher leverage.
+**Default recommendation: 0.70 delta** *for stock-replacement positions.* It gives you stock-like exposure at 15-25% of the capital. For a deliberate lottery sleeve, OTM is the right tool. Pick the structure by intent (below), not by default.
+
+### Deep ITM vs Far OTM: Pick by Intent
+
+Two different instruments, not better and worse versions of the same one:
+- **Deep ITM (0.70–0.85 delta) = leveraged stock.** You win if you're right about **direction**.
+- **Far OTM (0.20–0.35 delta) = lottery ticket.** You win only if you're right about **direction, size and speed**.
+
+**Illustration** (stock $100, 12-month calls, IV 50%, Black-Scholes estimates):
+
+| | Deep ITM $70 call | Far OTM $150 call |
+|---|---|---|
+| Cost | ~$37.60 ($30 intrinsic + $7.60 time) | ~$8.00 (all time value) |
+| Delta | ~0.85 | ~0.32 |
+| Breakeven at expiry | $107.60 (+7.6%) | $158 (+58%) |
+| Odds of finishing ITM | ~70% | ~16% |
+
+**Per contract, % return at expiry** (ITM looks better):
+
+| Stock at expiry | $70 call | $150 call |
+|---|---|---|
+| −30% | −100% | −100% |
+| Flat | **−20%** | −100% |
+| +20% | **+33%** | −100% |
+| +60% | +139% | +25% |
+| +100% | +246% | **+525%** |
+
+**Same dollars ($3,760 → 1 ITM contract vs ~4.7 OTM contracts)** (OTM's real benefit shows):
+
+| Stock at expiry | Deep ITM | Far OTM |
+|---|---|---|
+| −30% | −$3,760 | −$3,760 |
+| Flat | **−$760** | −$3,760 |
+| +20% | **+$1,240** | −$3,760 |
+| +60% | **+$5,240** | +$940 |
+| +100% | +$9,240 | **+$19,740** |
+| +150% | +$14,240 | **+$43,240** |
+
+**Crossover ≈ +72%.** Below it ITM wins; above it OTM wins by an accelerating margin. That's convexity.
+
+**Benefits of OTM LEAPs:**
+1. **Convexity:** for the same dollars, far more payoff on a big move.
+2. **Small, fixed max loss:** you can own most of a doubling for ~1/5 the capital. One 5–10x winner pays for several zeros.
+3. **Speed pays before expiry:** an early move inflates the option well before the stock reaches the expiry breakeven (gamma plus remaining time value). Real case: an OTM software-ETF LEAP showed +160% while the ETF was still *below* its expiry breakeven. **OTM calls make their money on speed, not at expiry.**
+4. **Vega kicker:** rallies and events lift IV, and OTM calls gain on top of the price move.
+
+**Costs of OTM:** flat or modestly-up outcomes lose 100%; most expire worthless; you pay full price for IV.
+
+**OTM playbook:**
+1. **Size each as a total loss.** Treat them as a basket (cap the lottery sleeve, e.g. ≤30% of a LEAP account).
+2. **Buy cheap volatility:** after earnings, in calm markets. Avoid buying right before a print or on names whose options imply ±15% per event, unless you accept overpaying.
+3. **Sell into speed:** take +100%, or convert to a vertical spread (sell a higher strike against it). The time value *is* the profit and it evaporates. Waiting for expiry gives it back.
+4. **Pick names that can plausibly move +70% or more within the window**, e.g. beaten-down sectors recovering. That's where OTM beats ITM.
+5. **Never on leveraged ETFs** (TSLL, CONL, etc.). Daily-reset decay works against long-dated calls structurally. Use calls on the underlying instead.
+
+**Why take profit at +100% (OTM calls):** the number isn't magic. The rule exists because of how OTM winners behave:
+1. **Gains sit in time value and IV, which decay even if the stock stalls.** Illustration: a $5 call at $10 = ~$2 intrinsic + ~$8 time/IV. Two flat months can bleed it to ~$7 with no stock decline; an earnings IV crush takes more overnight.
+2. **Leverage cuts both ways.** Real case: a −7.4% ETF week took its OTM LEAP −41% (~5.5x). A +160% gain became +52% in a week.
+3. **At +100% your original stake is back on the table.** Banking winners is what makes a lottery basket profitable; unbanked winners revert to zero.
+4. **A pre-set level overrides the "it'll come back" urge.**
+
+**Counter-argument:** always selling at +100% caps the convexity that's the reason to own OTM. So treat **+100% as a decision point**, not a forced sale:
+
+| At +100% | Effect | Best when |
+|---|---|---|
+| Sell all | Bank it | IV crush/earnings ahead, < 90 DTE, or thesis played out |
+| Sell half | Freeroll: cost recovered, rest runs at zero risk | Holding 2+ contracts |
+| Convert to vertical spread (sell a higher strike) | Locks a profit floor, keeps upside to the short strike | Single contract, still bullish |
+| Roll up (sell, rebuy a higher strike) | Banks most gains, keeps a smaller bet | Strong trend |
+
+**Let the updated verdict pick the action; let the instrument set the urgency.** The verdict answers *"do I still want this exposure?"*; time-to-expiry and upcoming IV events answer *"is this call still the right vehicle?"*
+
+| Updated verdict | Event / IV crush ahead, or < 90 DTE | > 90 DTE, IV normal |
+|---|---|---|
+| **Weakened** | Sell all | Sell all |
+| **Unchanged** | Bank: sell or convert to spread | Spread, or hold with a profit floor |
+| **Strengthened** | Roll out (keep the view, reset the clock) or spread | **Hold and let it run**, with a trailing floor (e.g. sell if it falls back to ~+50%) |
+
+Research cadence is weekly but option gains can vanish in days, so **always pair the verdict with a mechanical floor** (alert or stop) to avoid acting on a stale view.
+
+**Execution timing when selling options:**
+- **Time of day:** skip the first 15–30 min after the open (wide spreads); best fills ~10:00–11:30 ET or 2:00–3:30 ET. Limit near mid, walk down $0.05–0.10.
+- **Sell into strength:** park a GTC limit slightly above the mark early in the week so an up-day fills it; set a hard deadline fallback (lower to mid).
+- **Before earnings:** IV usually rises into the print. When *selling* a leg (closing a long call, or the short leg of a spread conversion), the richest premium is typically the afternoon before / day-of, before the close. Balance that against stock-move risk by placing the order early and keeping a deadline **before the close on report day** for after-close reports.
+- **Event weeks (FOMC, mega-cap capex):** close or protect positions exposed to the event before it, not after.
+
+**Buy OTM calls in pairs (2+ contracts) when budget allows,** so +100% can become "sell one, freeroll one." Single contracts leave only all-or-nothing or the spread conversion.
+
+**Use deep ITM when** you want stock-like exposure with less capital, expect a moderate move (+10–50%), or want to stay in the game if the move is slow.
 
 ## Expiry Selection
 

@@ -8,3 +8,4 @@ beautifulsoup4>=4.12
 plotly>=6.0
 matplotlib>=3.9
 # streamlit (scripts/app.py) is local-only — too heavy to install every cloud session
+scipy

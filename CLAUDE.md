@@ -204,6 +204,8 @@ NOTES.md           # Project decisions, discussions, and TODOs
 
 This repo is **public**. `research/` and `portfolio/` are gitignored and must never be committed here.
 
+**HARD RULE: no personal info or data in any tracked file** (knowledge/, scripts/, .claude/commands/, CLAUDE.md, NOTES.md, README). That covers positions, share counts, cost basis, trades, account values/IDs, employer, equity grants and tax situation. Examples must be hypothetical round numbers. Personal data belongs only in `portfolio/` (local), `research/` (private repo) or memory. Review the diff for personal details before every commit.
+
 - `research/` is a separate **private** repo (`XiaoGong610/Xiao-Trading-Research`) nested in this folder. Commit research changes from inside `research/`, not from the project root. HTML dashboards are ignored there too.
 - `portfolio/` is local-only and never goes to GitHub.
 - **Cloud sessions:** attach both repos. `scripts/cloud-setup.sh` links `research/` to the attached research clone and builds `.venv` from `requirements.txt`. It runs from the SessionStart hook (single-repo sessions) and the cloud environment's setup script (multi-repo sessions, where repo hooks don't load). It does nothing on local machines. If `research/` or `.venv` is missing in a cloud session, run `bash scripts/cloud-setup.sh`.
@@ -468,6 +470,13 @@ Data sources (all free, no API keys): SEC EDGAR (Form 4 insider filings via EFTS
 ```
 
 Signals: cluster buying (3+ insiders = STRONG), large purchases (>$500K), C-suite buying, unusual options volume (V/OI >3x), put/call skew. Results cached for 1 hour. Graceful degradation if a data source fails.
+
+### `scripts/cc-ladder-backtest.py`
+Historical backtest comparing covered-call structures on volatile names: 4× uniform strike vs strike ladder vs strike + timing ladder. Results feed the Ladder Rule in `knowledge/strategies/when-to-cc.md`. Uses yfinance + scipy.
+
+```bash
+.venv/bin/python3 scripts/cc-ladder-backtest.py
+```
 
 ### `scripts/app.py`
 Interactive Streamlit dashboard combining all research data into one view.

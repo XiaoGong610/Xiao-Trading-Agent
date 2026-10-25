@@ -19,17 +19,18 @@ Bitcoin follows a ~4-year cycle driven by **halving events** that cut miner bloc
 | 1st | Nov 2012 | ~$12 | $1,150 | Dec 2013 | ~13 | $170 | -85% |
 | 2nd | Jul 2016 | ~$650 | $19,700 | Dec 2017 | ~17 | $3,200 | -84% |
 | 3rd | May 2020 | ~$8,700 | $69,000 | Nov 2021 | ~18 | $15,500 | -77% |
-| 4th | Apr 2024 | ~$64,000 | **$126,000** | **Oct 2025** | **~18** | ~$58,000? | **-49% so far** |
+| 4th | Apr 2024 | ~$64,000 | **$126,000** | **Oct 2025** | **~18** | **$58,559 (Jun 30, 2026)** | **−53% (9-month bear)** |
 
 **Key observation:** Every cycle has peaked 13-18 months post-halving. The current cycle peaked at exactly 18 months (Oct 2025) — textbook timing.
 
 ## Current Cycle (4th — April 2024 Halving)
 
-**Where we are (July 2026):** ~28 months post-halving, ~9 months past the Oct 2025 peak.
-
-- **ATH:** $126,000 (October 6, 2025)
-- **Current price:** ~$64K (-49% from ATH)
-- **Pattern match:** Peak timing (18 months) matches perfectly. Drawdown magnitude (-44%) is milder than prior cycles.
+**Where we are (Oct 2026):** ~30 months post-halving, ~12 months past the Oct 2025 peak, ~3.5 months past the **Jun 30, 2026 low ($58,559, −53%)**.
+- **ATH:** $126,000 intraday (Oct 6, 2025)
+- **Cycle low (probable):** $58,559 on Jun 30, 2026, after a double capitulation (Feb $62.7K, Jun $58.6K). **9 months peak→low vs 12–13 in prior cycles; −53% vs −77–85%.** The "dampened cycle" forecast (−50–60%, $50–63K bottom) was right.
+- **Oct 20, 2026:** ~$82K (+41% off the low), above the 200D ($72.6K) and 200W ($67.2K). MVRV Z 1.55, NUPL 0.36: early recovery. Capped by the long-term holder cost band at $84–85K. ETFs bleeding (−$615M Oct MTD); Fed still hiking.
+- **Consensus (Oct 2026):** ~75% "bottom is in" (Checkonchain, Glassnode/Coinbase). The minority still expects an Oct–Dec low (Cowen, Cantor, 10x ~$55–60K). Full analysis: `research/sectors/crypto.md` (2026-10-20 deep-dive).
+- **Lesson:** peak *timing* followed the 4-year script; trough *depth and duration* compressed. Don't anchor bottom calls to the calendar when the drawdown is shallower than history.
 
 ### Bull Case: Mid-Cycle Correction, Not the End
 
@@ -41,7 +42,7 @@ The cycle is **maturing and elongating**, not repeating the 77-85% crashes:
 4. **CLARITY Act** — first real US regulatory framework advancing (60% odds of passing). Legitimizes the industry for institutional capital.
 5. **Halving supply reduction compounding** — each halving reduces new supply further. The 4th halving cut rewards to 3.125 BTC/block. Annual new supply is now <1% of total — approaching gold's scarcity.
 
-**If bull case:** BTC finds support at $60-68K, builds a base, then rallies to $120-150K+ in late 2026/2027 as rate cuts arrive and CLARITY Act passes. Second leg higher.
+**If bull case (now base case, Oct 2026):** BTC finds support at $60-68K, builds a base, then rallies to $120-150K+ in late 2026/2027 as rate cuts arrive and CLARITY Act passes. Second leg higher.
 
 ### Bear Case: Cycle Already Topped
 
@@ -147,29 +148,29 @@ These indicators tell you **where in the cycle you are**. Use them together — 
 - **What it measures:** BTC price against logarithmic regression bands with color zones (fire sale → bubble)
 - **⚠️ Caveat:** No fundamental basis — pure pattern-fitting. Fun to look at but not an investment tool.
 
-## Current Cycle Dashboard (Updated 2026-10-10)
+## Current Cycle Dashboard (Updated 2026-10-19)
 
 | Indicator | Reading | Zone | Signal |
 |-----------|---------|------|--------|
-| MVRV Z-Score | 1.62 | Fair to Moderate | Markup phase — hold/accumulate |
-| NUPL | 0.3842 | Hope/Fear | Early recovery or early decline |
-| Cycle Composite | 2.34/10 | Opportunity | Good accumulation zone |
-| Realized Price | $53,295 | — | BTC cost basis of all holders |
-| BTC Price | $83,031 | — | +55.8% vs realized price |
+| MVRV Z-Score | 1.55 | Fair to Moderate | Markup phase — hold/accumulate |
+| NUPL | 0.3567 | Hope/Fear | Early recovery or early decline |
+| Cycle Composite | 2.27/10 | Opportunity | Good accumulation zone |
+| Realized Price | $53,486 | — | BTC cost basis of all holders |
+| BTC Price | $81,970 | — | +53.3% vs realized price |
 
 **Component Scores (0-10):**
 
 | Component | Score |
 |-----------|-------|
-| MVRV Z-Score | 2.3 |
-| Puell Multiple | 5.1 |
+| MVRV Z-Score | 2.2 |
+| Puell Multiple | 5.0 |
 | Reserve Risk | 0.9 |
 | S2F Deviation | 0.5 |
-| Power Law | 3.1 |
+| Power Law | 2.9 |
 | Rainbow | 1.4 |
-| LTH MVRV | 3.1 |
+| LTH MVRV | 3.0 |
 
-*Source: BGeometrics (bitcoin-data.com) | Updated: 2026-10-10*
+*Source: BGeometrics (bitcoin-data.com) | Updated: 2026-10-19*
 
 
 ## How to Use This Framework

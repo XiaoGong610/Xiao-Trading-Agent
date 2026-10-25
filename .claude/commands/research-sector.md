@@ -149,7 +149,7 @@ For each ETF, note:
 
 ## Influencer Check
 
-Read `knowledge/reference/influencers.md` for tracked accounts whose focus matches this sector. Web search their recent posts for signals not in mainstream coverage — new picks, thesis changes, supply chain insights. Note anything relevant in Top Picks or Candidate Scoring.
+Read `knowledge/reference/influencers.md` and search **every** tracked account. Don't filter on the listed focus, because influencers pick up new sectors and names. For each account, search the sector/theme keyword plus the top candidate tickers. Look for signals not in mainstream coverage: new picks, thesis changes, supply chain insights. Note anything relevant in Top Picks or Candidate Scoring, and record "no mention found" per account. If an account covers something its focus didn't list, add it to `influencers.md`.
 
 ## Top Picks
 Highlight the top 2-3 candidates (highest scoring) and suggest next steps:

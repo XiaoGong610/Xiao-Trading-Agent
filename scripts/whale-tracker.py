@@ -977,7 +977,7 @@ def get_portfolio_tickers() -> list[str]:
             # Track section headers — skip "Sold" sections
             if re.match(r"^#{1,4}\s+", line):
                 in_sold = bool(re.search(r"[Ss]old", line))
-                # Parse: ### AMZN — 701 shares ...
+                # Parse: ### TICKER — 100 shares ...
                 hdr = re.match(
                     r"^#{1,4}\s+([A-Z]{1,5})\s+[—–-]\s+\d", line
                 )

@@ -253,9 +253,9 @@ When a position grows large from appreciation (not from buying), it requires act
 | **10-15%** | Monitor. No action unless conviction drops. | At upper limit -- tighten stops. | Reduce to conviction-based target (conv x 1%). |
 | **<10%** | On target. | On target. | Consider exit if <5. |
 
-### AMZN Exception
+### Locked-Concentration Exception (RSUs, short-term lots)
 
-RSU grants create involuntary concentration. Tax milestone (long-term capital gains eligibility) in Oct 2026. Document as intentional overweight with planned trim after tax milestone. Do not trim pre-milestone unless conviction drops below 5.
+Equity grants can create involuntary concentration. If a large lot is close to its long-term date, document it as an intentional overweight with a planned trim after that date. Don't trim before it unless conviction drops below 5. Vested RSUs themselves have basis = vest FMV, so they can be sold right away with ~no tax (see `knowledge/frameworks/tax-rules.md`).
 
 ### Trim Execution
 

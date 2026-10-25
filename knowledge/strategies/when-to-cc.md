@@ -135,6 +135,34 @@ Verdicts:
 
 **Stagger expirations.** Don't sell all CCs in the same week. Spread across 2-3 different expirations so you're never 100% exposed to one date.
 
+### Ladder Rule (≥ 2 contracts on one stock)
+
+Default to a **ladder**, not N identical calls:
+1. **Stagger the strikes.** Spread them ~+20% → +50% OTM (e.g. +22 / +34 / +40 / +48%) so assignment trims gradually on the way up.
+2. **Pace the timing.** Sell ~half now, and the rest only on **strength triggers**: a post-earnings close ≥ +10%, or a rally to resistance. Never sell the held-back tranches into weakness.
+3. **Mix the expiries.** Use 2-3 dates, per the stagger rule above.
+
+**Backtest evidence** (`scripts/cc-ladder-backtest.py`, Oct 24, 2026). 8 volatile names (COIN, CRCL, TSLA, NVDA, MU, AMZN, MSTR, HOOD), rolling 55-day windows, Black-Scholes at 1.15× realized vol. Overlay P&L is the % of position value vs. holding shares with no calls:
+
+| Strategy | Mean | Win % | Worst 5% | In >30% rallies | Flat | Down >15% |
+|---|---|---|---|---|---|---|
+| A. 4× uniform +22% now | −1.5% | 78% | **−45%** | **−30%** | +6.8% | +7.2% |
+| B. Strike ladder now | −0.8% | 82% | −35% | −20% | +5.0% | +5.2% |
+| C. Strike + timing ladder | −0.8% | 82% | **−33%** | **−19%** | +4.4% | +4.0% |
+
+**Reading:**
+- **Laddering is risk management, not extra return.** It cuts the worst-case cost of capped upside by about a third (−45% → −33%) and the rally drag from −30% to −19%. The price is ~2–3 pts less income in flat or down windows.
+- **Pacing (C vs B) adds a little more tail protection** and gives up some downside cushion, because the held-back calls never get sold in a drop.
+- **On strong-trend names (TSLA, NVDA, MU, MSTR), every CC overlay had a negative mean.** CCs there are an exit or income tool, not a free edge. On long-hold trend names, keep CCs far OTM only.
+
+**Limitations:**
+- Selection bias: most of these names were big winners.
+- No volatility skew or earnings IV bumps in the pricing.
+- No commissions.
+- The windows overlap.
+
+Treat the direction as reliable and the exact numbers as rough.
+
 ## When NOT to Sell CCs
 
 - **CC Sharpe Score < 40** — the math doesn't work. Wait.
@@ -150,6 +178,21 @@ Verdicts:
 - **Pre-earnings (7-14 days out):** IV inflates → premium is rich. Sell CCs only if you'd be happy selling at the strike regardless of the earnings outcome. Set strikes 15-20% OTM to give room for a beat.
 - **Never sell CCs through earnings if a beat could gap the stock 20%+.** The premium isn't worth the risk on names like MU, NVDA, AMD that routinely move 10-15% on earnings.
 - **Post-earnings:** IV crushes → close at 50%+ profit immediately if the stock stayed below your strike. Re-evaluate for a new CC at the new IV level.
+
+## Timing Evidence (external research, Oct 2026)
+
+| Factor | Finding | Source |
+|---|---|---|
+| DTE | **~30–45 DTE** performed best; theta is most favorable there | [ORATS covered-call backtest](https://orats.com/blog/covered-call-backtest-finding-the-best-maturity-strike-iv-and-earnings-methods) (3.5M parameter combos, S&P 500, 2007+); tastylive |
+| IV | Sell when **IV percentile > ~66%** (practitioners: IVR > 30–50%) | ORATS |
+| Earnings | **Avoiding earnings beat trading through them** | ORATS |
+| Into strength | Waiting **1–2 up days** helps slightly. Longer waits add no reliable edge, because IV usually *falls* in rallies and premium thins | [tastylive Market Measures](https://www.tastylive.com/shows/market-measures/episodes/selling-calls-multiple-up-days-01-12-2017) |
+| Exit | **Holding to expiry beat early profit-taking** in the ORATS backtest | ORATS |
+
+**How we apply it:**
+- **Default: sell new CCs *after* earnings** (post-IV-crush, 30–45 DTE), not before. Pre-earnings CCs are the exception. Use them only when you'd genuinely welcome assignment at the strike, or when the premium is deliberately bought as a hedge into the print.
+- **Strength triggers:** act after 1–2 up days into resistance. Don't wait for a large multi-day rally.
+- **Early close (50–65%) vs. hold to expiry:** the backtest favors holding for return. Our harvest rule trades some return for lower gap and assignment risk, so keep it for high-beta names and around events, and consider holding low-beta CCs to expiry.
 
 ## Management Rules
 

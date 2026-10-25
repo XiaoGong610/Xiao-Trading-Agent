@@ -21,15 +21,16 @@ Use the StockTwits bull/bear ratio and Reddit post volume to inform the Market S
 
 **Step 2b-ii: Influencer check**
 
-Read `knowledge/reference/influencers.md` for the list of tracked accounts. For each influencer whose focus area matches this stock's sector, web search their recent posts:
+Read `knowledge/reference/influencers.md` for the list of tracked accounts. Search **every** tracked account for this ticker, on every run. **Never skip one because its listed focus doesn't match the sector.** Influencers pick up new names all the time, and the focus column describes what they usually post about, not every stock they cover. For example, Serenity is listed as semis/photonics but has been a public CRCL bull since Feb 2026.
 
 ```
-"@handle" TICKER OR sector_keyword 2026
+"@handle" $TICKER 2026            # one search per tracked account, always
+"@handle" sector_keyword 2026     # extra search for accounts whose focus matches the sector
 ```
 
-**When to search (match by sector):**
-- Semiconductors, optical, photonics, AI supply chain → search **@aleabitoreddit** (Serenity)
-- All sectors → search **@maojietrading**, **@AlexMoonvestCN** if their focus areas are filled in
+Use the X MCP timeline/search tools if they're available. Otherwise use web search.
+
+**Record the result for every account, including "no mention found".** A missing line looks the same as a skipped check, so write it out. If an account turns out to cover a stock or sector its focus didn't list, add that to its row in `influencers.md`.
 
 **What to capture:**
 - Thesis alignment or disagreement with our research → note in Market Sentiment section

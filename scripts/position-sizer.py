@@ -103,7 +103,7 @@ def get_existing_shares(ticker: str) -> tuple[float, list[dict]]:
             if re.match(r'^#{1,4}\s+', line):
                 in_sold = bool(re.search(r'[Ss]old', line))
 
-                # Parse headers like "### AMZN — 701 shares ($181,216 — 84.35%)"
+                # Parse headers like "### TICKER — 100 shares ($10,000 — 5.00%)"
                 hdr = re.match(
                     r'^#{1,4}\s+([A-Z]{1,5})\s+[—–-]\s+([\d,.]+)\s+shares?\s*'
                     r'\(\$([\d,.]+)',
