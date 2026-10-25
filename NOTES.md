@@ -6,6 +6,13 @@ A living document for brainstorming, discussions, decisions, and TODOs.
 
 ## Decisions Made
 
+### Process & Framework Updates (2026-10-24)
+- **Public repo hard rule:** no personal info/data in any tracked file (now in CLAUDE.md). Examples in `knowledge/` are hypothetical.
+- **Influencer check = every account, every ticker.** The Focus column isn't a filter (a tracked account had covered a non-focus stock for months). X is read via Claude in Chrome; no X API/MCP is set up.
+- **CC Ladder Rule** (`when-to-cc.md`): for ≥2 contracts, stagger strikes and pace timing. `scripts/cc-ladder-backtest.py` showed it cuts the worst-case capped-upside cost by ~1/3 at similar mean return. Also added external timing evidence (30–45 DTE, IV percentile, avoid earnings, 1–2 up days).
+- **Closing options = numbers, not just rules:** decide closes on IV term structure, extrinsic %, delta, DTE + verdict. `/plan-stock` is for *opening* positions (including rolls).
+- **Tax rules expanded:** lot disposal method (high-cost long-term default for taxable accounts), straddle rules (no puts/collars on short-term lots), employer stock (RSUs, windows, 10b5-1).
+
 ### Skill Naming Convention (2026-05-09)
 - `research-*` — research skills
 - `strategy-*` — strategy-specific skills
@@ -316,7 +323,8 @@ Maximize after-tax returns. Critical before year-end.
 
 - [x] **Tax rules knowledge base** — `knowledge/frameworks/tax-rules.md` with multi-account sell order, wash sale rules, holding period awareness, where-to-hold guide
 - [x] **Tax-aware sell recommendations** — `/portfolio-review` now checks account type before recommending sells (losers in taxable first, winners in tax-free first)
-- [ ] **Wash sale tracking** — auto-flag if selling a stock at a loss and rebuying within 30 days across accounts
+- [x] **Lot disposal method, straddle rules, RSU / 10b5-1** — added to tax-rules.md (2026-10-24)
+- [ ] **Wash sale tracking** — auto-flag if selling a stock at a loss and rebuying within 30 days across accounts (include option *buys*, which count as acquisitions)
 - [ ] **End-of-year review** — annual skill to scan portfolio for tax optimization before Dec 31
 
 ### 11. Harvest Decision Framework ✅ DONE (2026-09-09)

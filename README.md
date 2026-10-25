@@ -98,6 +98,7 @@ scripts/               # Python scripts (committed)
   sentiment.py         # StockTwits + Reddit retail sentiment
   macro.py             # FRED macro data + Polymarket predictions
   bottleneck-scorecard.py # Supply-chain stock scoring (0-100)
+  cc-ladder-backtest.py # Backtest: uniform vs laddered covered calls
 .claude/commands/      # Claude Code custom skills (committed)
 NOTES.md               # Project decisions, discussions, and TODOs
 ```
@@ -118,10 +119,10 @@ NOTES.md               # Project decisions, discussions, and TODOs
 | `frameworks/sector-momentum.md` | Mansfield RS + Weinstein Stage + ROC momentum system |
 | `frameworks/crypto-cycles.md` | BTC 4-year halving cycle, on-chain indicators |
 | `frameworks/evidence-ladder.md` | Source grading, 12 red flags, evidence standards |
-| `frameworks/tax-rules.md` | Multi-account tax optimization, wash sales, sell order |
+| `frameworks/tax-rules.md` | Multi-account tax optimization, wash sales, sell order, lot disposal method, straddle rules, RSUs & 10b5-1 plans |
 | `sectors/semiconductors.md` | Semi cycles, Qual cycle, optical sub-layer, AI overlay |
 | `strategies/when-to-csp.md` | **CSP Score** (6-component composite), Buffer %, graded Earnings Gate, IV×RSI matrix |
-| `strategies/when-to-cc.md` | CC Sharpe 4-gate check, graded Earnings Gate, coverage rules, rolled CC handling |
+| `strategies/when-to-cc.md` | CC Sharpe 4-gate check, graded Earnings Gate, coverage rules, rolled CC handling, Ladder Rule, timing evidence |
 | `strategies/when-to-leaps.md` | LEAP delta/expiry selection, IV<30 gate, vega risk |
 | `strategies/execution-framework.md` | Order types, ATR-based stops, scaled exits, position sizing |
 | `reference/influencers.md` | High-signal X/Twitter accounts for research |

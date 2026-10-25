@@ -34,8 +34,8 @@ All skills work independently — `/research-stock`, `/strategy-theta-gang`, `/p
 
 4. RESEARCH (top-down, demand-driven)
    a. /research-market        — always run (non-negotiable, even if recent)
-   b. Influencer check        — pull recent tweets from tracked accounts (knowledge/reference/influencers.md)
-                                 via X MCP. Surface new stock mentions, thesis changes, supply chain insights.
+   b. Influencer check        — pull recent posts from ALL tracked accounts (knowledge/reference/influencers.md)
+                                 via Claude in Chrome on x.com (local; no X API/MCP set up). Surface new stock mentions, thesis changes, supply chain insights.
                                  This informs which sectors/stocks to prioritize in steps c-d.
    c. /research-sector        — batch all stale sectors needed by the refresh queue
                                  Staleness: 7 days if you hold stocks in that sector, 14 days otherwise
@@ -492,7 +492,7 @@ Panels: Market Regime, Sector Momentum, Top Picks, RSI vs FwdPE Scatter, Convict
 Reference docs in `knowledge/` for investment decision-making. Skills consult these for context and nuance.
 
 - `signals/` — RSI, IV rank, MACD, MA, volume interpretation guides, breakout filter, market day types
-- `frameworks/` — AI capital flow model, valuation benchmarks, crypto 4-year cycle, sector momentum, evidence ladder (source grading + red flags), **tax rules** (multi-account sell order, wash sales, tax-loss harvesting)
+- `frameworks/` — AI capital flow model, valuation benchmarks, crypto 4-year cycle, sector momentum, evidence ladder (source grading + red flags), **tax rules** (multi-account sell order, wash sales, tax-loss harvesting, lot disposal method, straddle rules for hedging short-term shares, RSUs / trading windows / 10b5-1 plans)
 - `sectors/` — sector-specific metrics and cycle dynamics (semiconductors)
-- `strategies/` — when to sell CSPs (**CSP Score** 6-component composite, Buffer %, graded Earnings Gate), **when to sell CCs** (CC Sharpe 4-gate check, graded Earnings Gate), when to buy LEAPs, **execution framework** (order types, stops, exits, position sizing)
-- `reference/` — influencer tracking (X/Twitter), ThetaGang.com leaders
+- `strategies/` — when to sell CSPs (**CSP Score** 6-component composite, Buffer %, graded Earnings Gate), **when to sell CCs** (CC Sharpe 4-gate check, graded Earnings Gate, **Ladder Rule** for ≥2 contracts, backtest-based timing evidence), when to buy LEAPs, **execution framework** (order types, stops, exits, position sizing)
+- `reference/` — influencer tracking (X/Twitter; search every account for every ticker, since the focus column isn't a filter), ThetaGang.com leaders
