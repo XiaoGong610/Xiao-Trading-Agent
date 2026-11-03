@@ -454,15 +454,117 @@ def _build_earnings(stocks, date_str):
         xaxis=dict(title="Days Until Earnings", gridcolor="#333333",
                    tickfont=dict(color="#cccccc"), zeroline=False),
         yaxis=dict(title="", tickfont=dict(color="#cccccc", size=13),
-                   automargin=True, categoryorder="total ascending"),
+                   # Horizontal bars stack bottom-up: descending puts the soonest on top
+                   automargin=True, categoryorder="total descending"),
         height=chart_height,
-        margin=dict(t=60, l=10, r=80, b=60),
+        margin=dict(t=60, l=10, r=140, b=60),
         paper_bgcolor="#0d1117", plot_bgcolor="#0d1117", font=dict(color="white"),
     )
     return fig
 
 
 # --- Tab 4: Holdings Table ---
+
+# Local, gitignored overrides for intentional exceptions (long holds, employer caps).
+# Format: markdown table rows "| TICKER | min% | max% | note |".
+OVERRIDES_PATH = Path("portfolio/allocation-overrides.md")
+
+
+def _load_allocation_overrides() -> dict:
+    overrides = {}
+    if not OVERRIDES_PATH.exists():
+        return overrides
+    for line in OVERRIDES_PATH.read_text().splitlines():
+        cells = [c.strip() for c in line.strip().strip('|').split('|')]
+        if len(cells) < 3 or not cells[0].isupper() or not cells[0].isalpha():
+            continue
+        try:
+            overrides[cells[0]] = (float(cells[1]), float(cells[2]),
+                                   cells[3] if len(cells) > 3 else '')
+        except ValueError:
+            continue
+    return overrides
+
+
+# Position-sizing framework: knowledge/frameworks/position-sizing.md
+CONVICTION_BASE = [(9, 6.5), (8, 4.5), (7, 3.5), (6, 2.0), (5, 1.0)]
+# Forward P/E (cheap below, rich above) by GICS sector, simplified from valuation.md
+PE_BANDS = {
+    'Technology': (20, 40), 'Communication Services': (18, 35),
+    'Consumer Discretionary': (18, 40), 'Consumer Staples': (16, 28),
+    'Healthcare': (15, 30), 'Financials': (12, 25), 'Energy': (10, 20),
+    'Industrials': (18, 35), 'Utilities': (14, 22), 'Materials': (12, 25),
+    'Real Estate': (15, 35),
+}
+MOMENTUM_MULT = {'Accelerating Up': 1.1, 'Downtrend': 0.8, 'Capitulation': 0.8}
+CLUSTER_CAP_PCT = 25.0
+TOLERANCE = 0.25  # within ±25% of target = on target
+
+
+def _base_target(conviction):
+    if conviction is None:
+        return None
+    c = float(conviction)
+    for floor, pct in CONVICTION_BASE:
+        if c >= floor:
+            return pct
+    return 0.0
+
+
+def _target_weight(d, sector):
+    """Conviction base x valuation x volatility x sector momentum. Returns (pct, factors)."""
+    base = _base_target(d.get('conviction'))
+    if base is None:
+        return None, []
+    pct, notes = base, [f"conv {base:.1f}%"]
+    pe, band = d.get('fwd_pe'), PE_BANDS.get(sector, (15, 35))
+    if pe:
+        if pe < band[0]:
+            pct *= 1.2; notes.append("cheap ×1.2")
+        elif pe > band[1]:
+            pct *= 0.8; notes.append("rich ×0.8")
+    atr = d.get('atr_pct')
+    if atr:
+        if atr < 3:
+            pct *= 1.1; notes.append("low vol ×1.1")
+        elif atr > 6:
+            pct *= 0.75; notes.append("high vol ×0.75")
+    mult = MOMENTUM_MULT.get(d.get('sector_momentum') or '')
+    if mult:
+        pct *= mult; notes.append(f"sector ×{mult}")
+    return pct, notes
+
+
+def _load_clusters() -> list[dict]:
+    """Correlated clusters of held positions (scripts/correlation.py --json)."""
+    try:
+        out = subprocess.run([sys.executable, str(Path(__file__).parent / 'correlation.py'), '--json'],
+                             capture_output=True, text=True, timeout=180)
+        return json.loads(out.stdout).get('clusters', []) if out.returncode == 0 else []
+    except Exception:
+        return []
+
+
+def _action_hint(status, d):
+    """Allocation status x timing signals -> what to do next."""
+    if d.get('earnings_days') is not None and 0 <= d['earnings_days'] <= 7 and status != 'on':
+        return 'Wait: earnings'
+    if status == 'on':
+        return 'Hold'
+    rsi = float(d['rsi']) if d.get('rsi') is not None else 50.0
+    stretch = d.get('pct_vs_sma20') or 0
+    good = rsi < 40 or stretch < -8
+    poor = rsi > 65 or stretch > 10
+    if status == 'under':
+        if poor: return 'Wait for pullback'
+        hint = 'Add zone' if good else 'DCA'
+        if hint == 'Add zone' and d.get('above_sma200') is False and d.get('sector_momentum') in ('Downtrend', 'Capitulation'):
+            hint = 'DCA slowly'
+        return hint
+    if good: return 'Trim on bounce'
+    if poor: return 'Trim into strength'
+    return 'Trim on strength'
+
 
 def _build_holdings_table(holdings, watchlist, sector_map):
     """Cross-account holdings table grouped by GICS sector."""
@@ -488,9 +590,40 @@ def _build_holdings_table(holdings, watchlist, sector_map):
             'conviction': wl.get('conviction'),
             'rsi': wl.get('rsi'),
             'fwd_pe': wl.get('fwd_pe'),
+            'atr_pct': wl.get('atr_pct'),
+            'pct_vs_sma20': wl.get('pct_vs_sma20'),
+            'above_sma200': wl.get('above_sma200'),
+            'sector_momentum': wl.get('sector_momentum'),
+            'earnings_days': wl.get('earnings_days'),
         }
 
     total_portfolio = sum(d['value'] for d in ticker_data.values()) or 1
+    overrides = _load_allocation_overrides()
+
+    # Multi-factor targets, then scale down correlated clusters above the cap
+    for d in ticker_data.values():
+        ov = overrides.get(d['ticker'])
+        if ov:
+            d['target'], d['factors'], d['override'] = (ov[0] + ov[1]) / 2, [], ov
+        else:
+            d['target'], d['factors'] = _target_weight(d, d['sector'])
+            d['override'] = None
+    # Clusters that share a theme label (e.g. several "AI Semis" groups) are one bet
+    themes: dict[str, set] = {}
+    for i, cl in enumerate(_load_clusters()):
+        label = cl.get('label') or 'Correlated Group'
+        key = f'{label}#{i}' if label == 'Correlated Group' else label
+        themes.setdefault(key, set()).update(cl.get('members', []))
+    for key, tickers in themes.items():
+        cl = {'label': key.split('#')[0], 'members': sorted(tickers)}
+        members = [ticker_data[t] for t in cl.get('members', [])
+                   if t in ticker_data and ticker_data[t]['target'] and not ticker_data[t]['override']]
+        total = sum(m['target'] for m in members)
+        if total > CLUSTER_CAP_PCT:
+            scale = CLUSTER_CAP_PCT / total
+            for m in members:
+                m['target'] *= scale
+                m['factors'].append(f"cluster cap ×{scale:.2f} ({cl.get('label', 'cluster')})")
 
     # Group by sector
     sectors: dict[str, list] = {}
@@ -542,6 +675,40 @@ def _build_holdings_table(holdings, watchlist, sector_map):
                 f'<span style="font-size:12px;min-width:40px;text-align:right;">'
                 f'{pct:.1f}%</span></div>')
 
+    def _alloc_cells(d, pct):
+        dash = '<span style="color:#484f58">—</span>'
+        if d['target'] is None:
+            return dash, dash, dash
+        ov = d['override']
+        if ov:
+            lo, hi = ov[0], ov[1]
+            target_txt = f'{lo:.0f}–{hi:.0f}%'
+        else:
+            lo, hi = d['target'] * (1 - TOLERANCE), d['target'] * (1 + TOLERANCE)
+            target_txt = f'{d["target"]:.1f}%'
+        status = 'under' if pct < lo else 'over' if pct > hi else 'on'
+        # Gap to the target itself (overrides: to the nearest band edge)
+        if ov:
+            gap = pct - lo if status == 'under' else pct - hi if status == 'over' else 0.0
+        else:
+            gap = pct - d['target']
+        far = abs(gap) >= max(2.0, d['target'] * 0.5)
+        dollars = abs(gap) / 100 * total_portfolio
+        if status == 'on':
+            badge = '<span style="color:#3fb950">On target</span>'
+        else:
+            color = '#f85149' if far else '#d29922'
+            label = ('Far ' if far else '') + status
+            badge = (f'<span style="color:{color};font-weight:600">{label} {gap:+.1f}pt</span>'
+                     f'<br><span style="color:#8b949e;font-size:11px;">~${dollars/1000:.1f}K</span>')
+        title = ' · '.join(d['factors']) if d['factors'] else (ov[2] if ov else '')
+        target_cell = f'<span style="color:#8b949e;cursor:help;" title="{title}">{target_txt}</span>'
+        if ov:
+            hint = f'<span style="color:#8b949e">Exception: {ov[2] or "set locally"}</span>'
+        else:
+            hint = _action_hint(status, d)
+        return target_cell, badge, hint
+
     rows = []
     row_idx = 0
     for sector in sorted(sectors.keys(),
@@ -559,7 +726,7 @@ def _build_holdings_table(holdings, watchlist, sector_map):
             f'<td></td><td></td>'
             f'<td style="text-align:right;font-size:15px;">${sector_total/1000:.0f}K</td>'
             f'<td>{_alloc_bar(sector_pct)}</td>'
-            f'<td></td><td></td><td></td></tr>'
+            f'<td></td><td></td><td></td><td></td><td></td><td></td></tr>'
         )
 
         for d in sectors[sector]:
@@ -568,6 +735,7 @@ def _build_holdings_table(holdings, watchlist, sector_map):
             value = f"${d['value']:,.0f}" if d['value'] > 0 else "—"
             bg = '#161b2280' if row_idx % 2 == 0 else 'transparent'
             row_idx += 1
+            target, status, hint = _alloc_cells(d, pct)
 
             rows.append(
                 f'<tr style="background:{bg};">'
@@ -578,7 +746,10 @@ def _build_holdings_table(holdings, watchlist, sector_map):
                 f'<td>{_alloc_bar(pct)}</td>'
                 f'<td style="text-align:center;">{_conv_badge(d["conviction"])}</td>'
                 f'<td style="text-align:center;">{_rsi_cell(d["rsi"])}</td>'
-                f'<td style="text-align:center;">{_pe_cell(d["fwd_pe"])}</td></tr>'
+                f'<td style="text-align:center;">{_pe_cell(d["fwd_pe"])}</td>'
+                f'<td style="text-align:center;">{target}</td>'
+                f'<td>{status}</td>'
+                f'<td style="font-size:12px;">{hint}</td></tr>'
             )
 
     return (
@@ -591,6 +762,9 @@ def _build_holdings_table(holdings, watchlist, sector_map):
         '<th style="text-align:center;">Conv</th>'
         '<th style="text-align:center;">RSI</th>'
         '<th style="text-align:center;">Fwd P/E</th>'
+        '<th style="text-align:center;">Target</th>'
+        '<th>Status</th>'
+        '<th>Action</th>'
         '</tr></thead><tbody>'
         + ''.join(rows)
         + '</tbody></table>'

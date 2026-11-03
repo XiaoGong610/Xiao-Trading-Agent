@@ -174,6 +174,9 @@ def parse_portfolio_holdings() -> dict[str, list[dict]]:
         account = fm.get('account_name', filepath.stem.upper())
 
         in_sold = False
+        # Column indices for the current table, read from its header row
+        # (defaults match the classic "| Ticker | Shares | Cost | Value | % |" layout)
+        col_value, col_pct = 3, 4
 
         for line in content.split('\n'):
             # Track section headers — skip "Sold" sections
@@ -212,17 +215,22 @@ def parse_portfolio_holdings() -> dict[str, list[dict]]:
 
             first = cells[0].strip('*').strip()
 
-            # Skip header rows
+            # Header rows: learn where Value / % live, then skip
             if first.lower() in ('ticker', 'option', 'strike', 'trade',
-                                  'acquired', '#', 'detail'):
+                                  'acquired', '#', 'detail', 'position'):
+                lowered = [c.strip('*').strip().lower() for c in cells]
+                col_value = next((i for i, c in enumerate(lowered)
+                                  if c in ('value', 'current value')), 3)
+                col_pct = next((i for i, c in enumerate(lowered)
+                                if c.startswith('% of acct') or c.startswith('% acct')), 4)
                 continue
 
             # Equity row: first cell is a valid ticker (1-5 uppercase letters)
             if re.match(r'^[A-Z]{1,5}$', first):
                 ticker = first
                 shares = _parse_number(cells[1]) if len(cells) > 1 else None
-                value = _parse_dollar(cells[3]) if len(cells) > 3 else None
-                pct = _parse_pct(cells[4]) if len(cells) > 4 else None
+                value = _parse_dollar(cells[col_value]) if len(cells) > col_value else None
+                pct = _parse_pct(cells[col_pct]) if len(cells) > col_pct else None
 
                 existing = holdings.get(ticker, [])
                 if not any(h['account'] == account and not h.get('is_option')
@@ -233,13 +241,13 @@ def parse_portfolio_holdings() -> dict[str, list[dict]]:
                     })
                 continue
 
-            # Option row: "TICKER $STRIKE Call/Put ..."
-            opt_m = re.match(r'([A-Z]{1,5})\s+\$[\d.]+\s+(?:Call|Put)', first)
+            # Option row: "TICKER $STRIKE Call/Put ..." or "TICKER $150C ..."
+            opt_m = re.match(r'([A-Z]{1,5})\s+\$[\d.]+(?:\s+(?:Call|Put)|[CP]\b)', first)
             if opt_m:
                 ticker = opt_m.group(1)
                 existing = holdings.get(ticker, [])
                 if not any(h['account'] == account for h in existing):
-                    value = _parse_dollar(cells[3]) if len(cells) > 3 else None
+                    value = _parse_dollar(cells[col_value]) if len(cells) > col_value else None
                     holdings.setdefault(ticker, []).append({
                         'account': account, 'shares': None,
                         'value': value, 'pct_of_acct': None,
@@ -366,22 +374,47 @@ def compute_rsi(closes, period=14):
     return round(100 - (100 / (1 + rs)), 1)
 
 
-def get_market_data(tickers: list[str]) -> tuple[dict, dict, dict]:
-    """Fetch current prices, RSI, and forward P/E for a list of tickers."""
+def _risk_stats(high, low, close) -> dict:
+    """ATR% (simple 14-day mean true range) and trend context."""
+    if len(close) < 20:
+        return {}
+    prev = close.shift(1)
+    tr = (high - low).combine((high - prev).abs(), max).combine((low - prev).abs(), max)
+    last = float(close.iloc[-1])
+    out = {'atr_pct': round(float(tr.tail(14).mean()) / last * 100, 2),
+           'pct_vs_sma20': round((last / float(close.tail(20).mean()) - 1) * 100, 1)}
+    if len(close) >= 200:
+        out['above_sma200'] = last > float(close.tail(200).mean())
+    return out
+
+
+def get_market_data(tickers: list[str]) -> tuple[dict, dict, dict, dict]:
+    """Fetch current prices, RSI, forward P/E and risk stats (ATR%, trend) for tickers."""
     prices = {}
     rsi_values = {}
     fwd_pe = {}
+    risk = {}
 
     if not HAS_YFINANCE or not tickers:
-        return prices, rsi_values, fwd_pe
+        return prices, rsi_values, fwd_pe, risk
 
     us_tickers = [t for t in tickers if not any(c in t for c in ['.', '/', 'IBDNF'])]
     if not us_tickers:
-        return prices, rsi_values, fwd_pe
+        return prices, rsi_values, fwd_pe, risk
 
     try:
         # 6mo of history so Wilder's RSI smoothing converges (1mo gave distorted values)
-        data = yf.download(us_tickers, period="6mo", progress=False)
+        data = yf.download(us_tickers, period="1y", progress=False)
+        for t in us_tickers:
+            try:
+                if len(us_tickers) == 1:
+                    h, l, c = data['High'], data['Low'], data['Close']
+                else:
+                    h, l, c = data['High'][t], data['Low'][t], data['Close'][t]
+                frame = c.to_frame('c').assign(h=h, l=l).dropna()
+                risk[t] = _risk_stats(frame['h'], frame['l'], frame['c'])
+            except (KeyError, IndexError, ValueError):
+                pass
         if len(us_tickers) == 1:
             try:
                 closes = data['Close'].dropna().tolist()
@@ -418,7 +451,7 @@ def get_market_data(tickers: list[str]) -> tuple[dict, dict, dict]:
     except Exception:
         pass
 
-    return prices, rsi_values, fwd_pe
+    return prices, rsi_values, fwd_pe, risk
 
 
 def fetch_sector_momentum() -> dict[str, str]:
@@ -693,7 +726,7 @@ def load_and_classify() -> list[dict]:
     # Fetch market data (prices, RSI, fwd P/E)
     tickers = [s['ticker'] for s in stocks_raw]
     print("Fetching market data...", file=sys.stderr)
-    prices, rsi_values, fwd_pe_values = get_market_data(tickers)
+    prices, rsi_values, fwd_pe_values, risk_values = get_market_data(tickers)
 
     # Collect sector momentum (should be done by now)
     sector_momentum_map = {}
@@ -724,6 +757,7 @@ def load_and_classify() -> list[dict]:
         if s.get('sector') and s['sector'] not in SECTOR_TO_GICS:
             print(f"  ⚠ unmapped sector '{s['sector']}' for {ticker}", file=sys.stderr)
         result = classify_stock(s, price, momentum, rsi=rsi, fwd_pe=pe)
+        result.update(risk_values.get(ticker, {}))
         result['filepath'] = s.get('filepath')
         result['last_update'] = s.get('last_update')
         classified.append(result)
