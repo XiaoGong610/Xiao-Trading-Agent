@@ -209,7 +209,7 @@ This repo is **public**. `research/` and `portfolio/` are gitignored and must ne
 - `research/` is a separate **private** repo (`XiaoGong610/Xiao-Trading-Research`) nested in this folder. Commit research changes from inside `research/`, not from the project root. HTML dashboards are ignored there too.
 - `portfolio/` is local-only and never goes to GitHub.
 - **Cloud sessions:** attach both repos. `scripts/cloud-setup.sh` links `research/` to the attached research clone and builds `.venv` from `requirements.txt`. It runs from the SessionStart hook (single-repo sessions) and the cloud environment's setup script (multi-repo sessions, where repo hooks don't load). It does nothing on local machines. If `research/` or `.venv` is missing in a cloud session, run `bash scripts/cloud-setup.sh`.
-- **New machine:** clone this repo, then `git clone https://github.com/XiaoGong610/Xiao-Trading-Research.git research`.
+- **New machine:** clone this repo, run `git config core.hooksPath .githooks` (enables the privacy pre-commit hook), then `git clone https://github.com/XiaoGong610/Xiao-Trading-Research.git research`.
 
 ### Cloud vs Local
 
@@ -452,7 +452,19 @@ Validates trading plan orders against account cash balances. Parses the latest (
 .venv/bin/python3 scripts/cash-check.py --plan PLAN-2026-09-06.md  # specific plan
 ```
 
-Shows per-account: available cash, DCA burn (1 month), limit order costs, LEAP purchases, CSP collateral (reserved), remaining cash, DCA runway, and status (OK / TIGHT / OVER-COMMITTED).
+Shows per-account: available cash, DCA burn (1 month), limit order costs, LEAP purchases, CSP collateral (reserved), remaining cash, DCA runway, and status (OK / TIGHT / OVER-COMMITTED). Orders under a "Conditionals" heading are shown separately as "if all fire".
+
+Order tables are found by their columns (an `Account` column plus an `Order` or `Action` column), so section names can change freely. Write buy quantities as `N @ $price` (or `Total ~$X`) so they can be priced. **Exit codes:** 0 OK, 1 an account is over-committed, 2 the plan couldn't be fully parsed (no order rows, an unpriced buy, an unknown account). Treat exit 2 as a failed gate: fix the plan wording and re-run. Don't report "cash OK".
+
+### `scripts/privacy-check.py`
+Blocks personal data from this public repo. Runs automatically as a git pre-commit hook on staged lines. It holds no personal terms itself: at run time it reads account IDs, cash/total values, position quantities and cost-basis prices from `portfolio/accounts/*.md`, plus extra words from the gitignored `portfolio/private-terms.txt`.
+
+```bash
+.venv/bin/python3 scripts/privacy-check.py        # staged changes (what the hook runs)
+.venv/bin/python3 scripts/privacy-check.py --all  # every tracked file
+```
+
+Add `privacy-ok` to a line to allow a false positive. One-time setup per clone: `git config core.hooksPath .githooks`.
 
 ### `scripts/whale-tracker.py`
 Tracks institutional activity, insider transactions, and unusual options volume. Surfaces "smart money" signals: insider buying/selling clusters, institutional holding changes, and unusual options activity.

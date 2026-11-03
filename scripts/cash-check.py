@@ -9,6 +9,13 @@ Usage:
     .venv/bin/python3 scripts/cash-check.py                        # latest plan, terminal
     .venv/bin/python3 scripts/cash-check.py --json                  # JSON output
     .venv/bin/python3 scripts/cash-check.py --plan PLAN-2026-09-06.md  # specific plan
+
+Order tables are found by their column headers (an 'Account' column plus an
+'Order' or 'Action' column), not by section name. Tables under a "Conditionals"
+heading, or with a "Trigger" column, are counted separately as "if triggers fire".
+
+Exit codes: 0 OK, 1 an account is over-committed, 2 the plan couldn't be fully
+parsed (no order rows, an unpriced buy, or an unknown account).
 """
 
 import argparse
@@ -91,281 +98,332 @@ def resolve_account(raw: str) -> str:
     return cleaned.upper()
 
 
-def parse_dollar_amounts(text: str) -> list:
-    """Extract all dollar amounts from text. Returns list of (value, position) tuples.
-
-    Handles: $X, ~$X, $X,XXX, $X.XX, $XK, $X-YK (range with K suffix).
-    """
-    amounts = []
-    for m in re.finditer(r"~?\$([\d,]+(?:\.\d+)?)\s*([Kk])?", text):
-        num_str = m.group(1).replace(",", "")
-        try:
-            val = float(num_str)
-        except ValueError:
-            continue
-        if m.group(2):  # K suffix
-            val *= 1000
-        amounts.append((val, m.start()))
-    return amounts
+OPTION_STRIKE_RE = re.compile(r"\$[\d,]+(?:\.\d+)?\s*([CP])\b")
+VERB_RE = re.compile(
+    r"\b(buy\s+back|buy\s+to\s+close|buy|add|sell|trim|exit|cut|close|roll|hold|keep|let|pause|stop|set)\w*",
+    re.IGNORECASE,
+)
 
 
-def parse_total_cost(detail: str) -> float:
-    """Parse total cost from an order Detail column.
-
-    Priority:
-    1. Explicit "Total ~$X" pattern
-    2. "Collateral ~$XK" pattern (for CSPs)
-    3. "Est. cost ~$X-$YK" range (take midpoint)
-    4. "N shares ~$X" or "N share ~$X" (single item cost)
-    5. Fallback: largest dollar amount
-    """
-    # 1. Look for explicit total pattern
-    total_m = re.search(r"[Tt]otal\s*~?\$([\d,]+(?:\.\d+)?)\s*([Kk])?", detail)
-    if total_m:
-        val = float(total_m.group(1).replace(",", ""))
-        if total_m.group(2):
-            val *= 1000
-        return val
-
-    # 2. Look for collateral pattern (for CSPs)
-    coll_m = re.search(r"[Cc]ollateral\s*~?\$([\d,]+(?:\.\d+)?)\s*([Kk])?", detail)
-    if coll_m:
-        val = float(coll_m.group(1).replace(",", ""))
-        if coll_m.group(2):
-            val *= 1000
-        return val
-
-    # 3. Look for "Est. cost ~$X-$YK" or "~$X-$Y cost" range — take midpoint
-    est_m = re.search(
-        r"(?:[Ee]st\.?\s*(?:cost|premium)\s*~?\$([\d,]+(?:\.\d+)?)\s*-\s*\$?([\d,]+(?:\.\d+)?)\s*([Kk])?)"
-        r"|(?:~\$([\d,]+(?:\.\d+)?)\s*-\s*\$?([\d,]+(?:\.\d+)?)\s*([Kk])?\s*(?:cost|premium))",
-        detail
-    )
-    if est_m:
-        if est_m.group(1):
-            lo = float(est_m.group(1).replace(",", ""))
-            hi = float(est_m.group(2).replace(",", ""))
-            k = est_m.group(3)
-        else:
-            lo = float(est_m.group(4).replace(",", ""))
-            hi = float(est_m.group(5).replace(",", ""))
-            k = est_m.group(6)
-        if k:
-            lo *= 1000
-            hi *= 1000
-        return (lo + hi) / 2
-
-    # 4. Look for "N share(s) ~$X" or "N share(s) @ $X" (single item with price)
-    share_m = re.search(r"(\d+)\s+shares?\s*(?:~|at\s*(?:or\s*below\s*)?)\$?([\d,]+(?:\.\d+)?)", detail)
-    if share_m:
-        count = int(share_m.group(1))
-        price = float(share_m.group(2).replace(",", ""))
-        return count * price
-
-    # 5. Fallback: largest dollar amount that looks like a cost (not a strike price / other ref)
-    amounts = parse_dollar_amounts(detail)
-    if amounts:
-        return max(a[0] for a in amounts)
-
-    return 0
+def first_verb(text: str) -> str:
+    """Return the first action verb in text (lowercased), or ''."""
+    m = VERB_RE.search(text)
+    return re.sub(r"\s+", " ", m.group(1).lower()) if m else ""
 
 
 def classify_order(order_text: str, type_text: str, detail: str) -> str:
-    """Classify an order as 'limit', 'csp', 'leap', 'cc', 'dca', 'stop', or 'other'."""
-    combined = (order_text + " " + type_text + " " + detail).lower()
+    """Classify an order row.
 
-    # Non-cash-deployment actions first
-    if "trailing stop" in combined or "stop loss" in combined or "set trailing" in combined:
+    Cash-deploying kinds: 'limit' (share buys), 'leap' (option buys), 'csp' (collateral).
+    Non-deploying kinds: 'cc', 'sell', 'close', 'roll', 'stop', 'dca', 'dca_modify',
+    'assignment', 'none'.
+
+    Keywords are matched as whole words: a plain substring test for "cc" also
+    matches "account" and "accelerate", which used to drop real buy orders.
+    """
+    combined = f"{order_text} {type_text} {detail}"
+    low = combined.lower()
+
+    if re.match(r"\s*no\b", order_text.lower()) or re.match(r"\s*no\b", detail.lower()):
+        return "none"
+    if re.search(r"trailing stop|stop loss|set trailing|\balert\b", low) and not re.search(r"\bbuy|\badd", low):
         return "stop"
-    if "let assign" in combined or "let expire" in combined or "let ride" in combined:
+    if re.search(r"let (assign|expire|ride)", low):
         return "assignment"
-    if "modify dca" in combined or ("slow" in combined and "dca" in combined):
-        return "dca_modify"
-    if "pause" in combined and "dca" in combined:
-        return "dca_modify"
-    if "dca" in combined or "recurring" in combined:
+    dca = re.search(r"\bdca\b|recurring", low)
+    lead = VERB_RE.search(combined)
+    if dca and (not lead or dca.start() < lead.start()):
+        if re.search(r"\b(pause|slow|modify|cut|raise|stop|resume)\w*", low):
+            return "dca_modify"
         return "dca"
-    if ("csp" in combined or
-            ("sell to open" in combined and ("put" in combined or re.search(r"\d+p\b", combined)))):
-        return "csp"
-    if "cc" in combined or "covered call" in combined:
+    if re.search(r"covered call|\bccs?\b", low):
         return "cc"
-    if "sell" in order_text.lower() and "to open" not in type_text.lower():
-        # Selling shares (e.g., "Sell GLD", "Trim U") — generates cash, not a deployment
-        return "sell"
-    if "trim" in order_text.lower():
-        return "sell"
-    if "leap" in combined or "buy to open" in combined:
+
+    verb = first_verb(order_text) or first_verb(type_text) or first_verb(detail)
+    strike = OPTION_STRIKE_RE.search(combined)
+
+    if verb in ("buy back", "buy to close"):
+        return "close"
+    if re.search(r"\bcsps?\b|cash[- ]secured", low) or (
+        verb == "sell" and strike and strike.group(1) == "P" and "to close" not in low
+    ):
+        return "csp"
+    if re.search(r"\bleaps?\b|buy to open", low) or (verb in ("buy", "add") and strike):
         return "leap"
-    if "limit" in combined or "gtc" in combined:
+    if verb in ("buy", "add"):
         return "limit"
-    if "market" in type_text.lower() or "buy" in order_text.lower():
-        return "limit"  # Market buys treated as limit for cash purposes
-    return "other"
+    if verb in ("sell", "trim", "exit", "cut"):
+        return "sell"
+    if verb == "close":
+        return "close"
+    if verb == "roll":
+        return "roll"
+    if verb:
+        return "none"
+    # Older plans put the action in a Type column ("Limit", "GTC", "Market").
+    if re.search(r"\blimit\b|\bgtc\b|\bmarket\b", type_text.lower()):
+        return "limit"
+    return "none"
 
 
 def is_deferred(order_text: str, detail: str) -> bool:
-    """Check if an order is deferred / struck through / contingent."""
+    """Check if an order is deferred, struck through, rejected or already done."""
     combined = order_text + " " + detail
     if "~~" in combined:
         return True
-    if re.search(r"DEFERRED|CONTINGENT|After\s+(Oct|Nov|Dec|Jan|Feb|Mar|Sep)", combined, re.IGNORECASE):
+    if re.search(r"DEFERRED|CONTINGENT|REJECTED|(?<!not )\bDONE\b|After\s+(Oct|Nov|Dec|Jan|Feb|Mar|Sep)",
+                 combined, re.IGNORECASE):
         return True
     return False
 
 
-def parse_one_time_orders(plan_text: str) -> list:
-    """Parse the One-Time Orders table from a plan file."""
+def order_cost(kind: str, text: str) -> tuple:
+    """Return (cost, method) for a cash-deploying order. method is how it was priced."""
+    # Explicit total or collateral wins.
+    for label in ("total", "collateral"):
+        m = re.search(label + r"\s*~?\$([\d,]+(?:\.\d+)?)\s*([Kk])?", text, re.IGNORECASE)
+        if m:
+            val = float(m.group(1).replace(",", ""))
+            return (val * 1000 if m.group(2) else val), label
+
+    # "10 shares × $220 = $2,200" — a stated result wins over re-computing it.
+    m = re.search(r"=\s*~?\$([\d,]+(?:\.\d+)?)\s*([Kk])?\b", text)
+    if m:
+        val = float(m.group(1).replace(",", ""))
+        return (val * 1000 if m.group(2) else val), "stated total"
+
+    if kind == "csp":
+        # Collateral = strike × 100 × contracts.
+        m = re.search(r"(\d+)\s*[x×]?\s*(?:contracts?\s+)?(?:[A-Z]{1,5}\s+)?\$(\d+(?:\.\d+)?)\s*P\b", text)
+        if m:
+            return int(m.group(1)) * float(m.group(2)) * 100, "strike×100×contracts"
+        m = OPTION_STRIKE_RE.search(text)
+        if m:
+            strike = float(re.search(r"\$(\d+(?:\.\d+)?)", m.group(0)).group(1))
+            return strike * 100, "strike×100 (1 contract assumed)"
+
+    text = text.replace("**", "")
+    # "13 @ $214, 4 @ $860 + 3 @ $810", "4 MU @ $860" or "25 shares at $190" — sum every rung.
+    rungs = re.findall(
+        r"(?<![\d.$])(\d[\d,]*)\s*(?:[A-Z]{1,5}\s+)?(?:sh(?:ares?)?\.?\s*)?(?:@|×|at\s+(?:or\s+below\s+)?)\s*~?\$([\d,]+(?:\.\d+)?)",
+        text,
+    )
+    if rungs:
+        total = sum(int(q.replace(",", "")) * float(p.replace(",", "")) for q, p in rungs)
+        if kind == "leap":
+            total *= 100  # option premium is quoted per share
+        return total, "quantity×price"
+
+    m = re.search(r"(\d+)\s+shares?\s*~\$?([\d,]+(?:\.\d+)?)", text)
+    if m:
+        return int(m.group(1)) * float(m.group(2).replace(",", "")), "quantity×price"
+
+    # Ranges like "Est. cost ~$2-3K" — midpoint.
+    m = re.search(r"~?\$([\d,]+(?:\.\d+)?)\s*[-–]\s*\$?([\d,]+(?:\.\d+)?)\s*([Kk])\b", text)
+    if m:
+        lo, hi = float(m.group(1).replace(",", "")), float(m.group(2).replace(",", ""))
+        return (lo + hi) / 2 * 1000, "range midpoint"
+
+    # "~$300-400 cost" — midpoint of a plain-dollar range labelled as cost/premium.
+    m = re.search(r"~?\$([\d,]+(?:\.\d+)?)\s*[-–]\s*\$?([\d,]+(?:\.\d+)?)\s*(?:cost|premium)", text,
+                  re.IGNORECASE)
+    if m:
+        lo, hi = float(m.group(1).replace(",", "")), float(m.group(2).replace(",", ""))
+        return (lo + hi) / 2, "range midpoint"
+
+    # Explicit "$4.5K" style amount.
+    m = re.search(r"~?\$([\d,]+(?:\.\d+)?)\s*[Kk]\b", text)
+    if m:
+        return float(m.group(1).replace(",", "")) * 1000, "stated amount"
+
+    return 0.0, "unpriced"
+
+
+def iter_tables(plan_text: str):
+    """Yield (h2, h3, header_cells, rows) for every markdown table in the plan."""
+    h2 = h3 = ""
+    lines = plan_text.splitlines()
+    i = 0
+    while i < len(lines):
+        line = lines[i].strip()
+        if line.startswith("## "):
+            h2, h3 = line[3:].strip(), ""
+        elif line.startswith("### "):
+            h3 = line[4:].strip()
+        elif line.startswith("|") and i + 1 < len(lines) and re.match(r"^\|[\s:\-|]+\|$", lines[i + 1].strip()):
+            header = split_row(line)
+            rows = []
+            i += 2
+            while i < len(lines) and lines[i].strip().startswith("|"):
+                rows.append(split_row(lines[i].strip()))
+                i += 1
+            yield h2, h3, header, rows
+            continue
+        i += 1
+
+
+def split_row(line: str) -> list:
+    """Split a markdown table row into cells, keeping empty cells in place."""
+    return [c.strip() for c in line.strip().strip("|").split("|")]
+
+
+def col(header: list, *names) -> int:
+    """Index of the first header cell containing any of names (case-insensitive), or -1."""
+    for name in names:
+        for idx, cell in enumerate(header):
+            if name in cell.lower():
+                return idx
+    return -1
+
+
+SKIP_SECTIONS = ("dca schedule", "key dates", "risk budget", "summary", "position management",
+                 "post-plan gates", "reconciliation")
+
+
+def parse_one_time_orders(plan_text: str) -> tuple:
+    """Parse every order table in the plan.
+
+    Plans have used several layouts ("One-Time Orders", "MUST-DO", "Should-Do",
+    "Conditionals", per-stock tranche tables), so tables are found by their
+    column headers rather than by section name. Returns (orders, stats).
+    """
     orders = []
+    stats = {"tables": 0, "rows": 0, "unpriced": []}
 
-    # Find the One-Time Orders section
-    section_m = re.search(r"##\s*One-Time Orders.*?\n(.*?)(?=\n##\s|\n---|\Z)", plan_text, re.DOTALL)
-    if not section_m:
-        return orders
-
-    section = section_m.group(1)
-
-    # Find table rows (skip header and separator)
-    lines = section.strip().splitlines()
-    in_table = False
-    for line in lines:
-        line = line.strip()
-        if not line.startswith("|"):
-            in_table = False
+    for h2, h3, header, rows in iter_tables(plan_text):
+        section = f"{h2} {h3}".lower()
+        head = " ".join(header).lower()
+        if any(s in h2.lower() for s in SKIP_SECTIONS) or "reference" in head:
             continue
-        # Skip header separator
-        if re.match(r"\|[\s\-|]+\|", line):
-            in_table = True
+        acct_i = col(header, "account")
+        if acct_i < 0:
             continue
-        if not in_table:
-            # Could be the header row
-            if "#" in line.split("|")[1] if len(line.split("|")) > 1 else False:
+        conditional = "conditional" in section or header[0].lower().startswith("trigger")
+        order_i = col(header, "action") if conditional else col(header, "order")
+        if order_i < 0:
+            order_i = col(header, "action", "trigger")
+        if order_i < 0:
+            continue
+        trigger_i = col(header, "trigger")
+        type_i = col(header, "type")
+        detail_idx = [i for i, h in enumerate(header)
+                      if i not in (order_i, acct_i)
+                      and re.search(r"detail|exact order|action|order", h.lower())]
+
+        stats["tables"] += 1
+        for cells in rows:
+            if len(cells) <= max(order_i, acct_i):
                 continue
-            in_table = True
+            order_text = cells[order_i]
+            if re.sub(r"[*\s]", "", order_text).lower() in ("", "total"):
+                continue
+            type_text = cells[type_i] if 0 <= type_i < len(cells) else ""
+            detail = " ".join(cells[i] for i in detail_idx if i < len(cells))
+            trigger = cells[trigger_i] if conditional and 0 <= trigger_i < len(cells) else ""
+            stats["rows"] += 1
+
+            if is_deferred(order_text, detail):
+                continue
+            # A conditional's verb can sit in the trigger ("WDC: SELL 10 Monday").
+            kind = classify_order(order_text if first_verb(order_text) else f"{order_text} {trigger}",
+                                  type_text, detail)
+            if kind not in ("limit", "leap", "csp"):
+                continue
+
+            cost, method = order_cost(kind, f"{order_text} {detail}")
+            num_i = col(header, "#")
+            desc = re.sub(r"\*\*", "", trigger or order_text).strip()
+            desc = desc[:60] + ("…" if len(desc) > 60 else "")
+            order = {
+                "num": cells[num_i] if 0 <= num_i < len(cells) else "",
+                "description": desc,
+                "type": type_text,
+                "account": resolve_account(cells[acct_i]),
+                "detail": detail,
+                "cost": cost,
+                "cost_method": method,
+                "kind": kind,
+                "conditional": conditional,
+                "section": h2,
+            }
+            if cost == 0:
+                stats["unpriced"].append(order)
+            orders.append(order)
+
+    return orders, stats
+
+
+def dca_rows(account: str, header: list, rows: list) -> list:
+    """Parse DCA table rows into {account, ticker, daily, description}."""
+    out = []
+    proposed_i = col(header, "proposed")
+    if proposed_i < 0:
+        proposed_i = 3
+    for cells in rows:
+        if len(cells) <= proposed_i:
             continue
-
-        cols = [c.strip() for c in line.split("|")]
-        # Remove empty first/last from split
-        cols = [c for c in cols if c != ""]
-
-        if len(cols) < 6:
+        ticker = re.sub(r"\*\*", "", cells[0]).strip()
+        if ticker.lower() in ("total", "") or ticker.startswith("~~"):
             continue
-
-        # Columns: #, Order, Type, Account, Detail, Rationale, [Deadline]
-        order_num = cols[0]
-        order_text = cols[1]
-        order_type = cols[2]
-        account_raw = cols[3]
-        detail = cols[4]
-        rationale = cols[5] if len(cols) > 5 else ""
-
-        # Skip deferred/struck-through orders
-        if is_deferred(order_text, detail):
+        cell = cells[proposed_i]
+        if "PAUSED" in cell.upper() or re.match(r"\W*\$0\b", cell):
             continue
-
-        account = resolve_account(account_raw)
-        cost = parse_total_cost(detail)
-        kind = classify_order(order_text, order_type, detail)
-
-        # Skip non-deployment order types
-        # CCs: premium is income, not a cost
-        # DCA: handled in DCA schedule section
-        # Stops: trailing/stop-loss orders don't deploy cash
-        # DCA modifications: pace changes, not new cash
-        # Sells: selling shares generates cash, not a deployment
-        # Assignments: letting options expire/assign — no new cash needed
-        if kind in ("cc", "dca", "stop", "dca_modify", "sell", "assignment"):
-            continue
-
-        orders.append({
-            "num": order_num,
-            "description": re.sub(r"\*\*", "", order_text).strip(),
-            "type": order_type,
-            "account": account,
-            "detail": detail,
-            "cost": cost,
-            "kind": kind,
-        })
-
-    return orders
+        m = re.search(r"\$(\d+)", cell)
+        if m and int(m.group(1)) > 0:
+            daily = int(m.group(1))
+            out.append({"account": account, "ticker": ticker, "daily": daily,
+                        "description": f"{ticker} ${daily}/d"})
+    return out
 
 
 def parse_dca_schedule(plan_text: str) -> list:
-    """Parse DCA schedule sections from a plan file.
+    """Parse the DCA Schedule section.
 
-    Handles two formats:
-    - "### Account Name — $X/day" (multiple sub-sections)
-    - "## DCA Schedule (Account — $X/day)" (single section with parenthesized account)
-
-    Returns list of {account, ticker, daily, description}.
+    Handles:
+    - "### Account — $X/day ..." sub-headings, with or without a table under them
+      (a heading-only line like "### HOLD — CRCL $100/day: keep running" counts as one DCA)
+    - "## DCA Schedule (Account — $X/day)" single-account sections
+    Paused / $0 headings are skipped.
     """
     dcas = []
+    sec = re.search(r"^##\s+DCA Schedule(.*?)$(.*?)(?=^##\s|\Z)", plan_text, re.DOTALL | re.MULTILINE)
+    if not sec:
+        return dcas
+    title, body = sec.group(1), sec.group(2)
 
-    # Pattern 1: ### Account Name — $X/day (or — PAUSED)
-    sections = list(re.finditer(
-        r"###\s+(.*?)\s*[—–-]\s*(?:PAUSED|\$(\d+)/day).*?\n(.*?)(?=\n###\s|\n---|\n##\s|\Z)",
-        plan_text, re.DOTALL
-    ))
+    # Single-account form: "## DCA Schedule (BrokerageLink — $600/day)"
+    single = re.match(r"\s*\(([^)—–-]*?)\s*[—–-]+\s*\$(\d+)/day", title)
 
-    # Pattern 2: ## DCA Schedule (Account — $X/day)
-    alt_sections = re.finditer(
-        r"##\s+DCA Schedule\s*\(([^)]*?)\s*[—–-]\s*\$(\d+)/day\).*?\n(.*?)(?=\n---|\n##\s|\Z)",
-        plan_text, re.DOTALL
-    )
-    for alt in alt_sections:
-        sections.append(alt)
+    blocks = re.split(r"^###\s+", body, flags=re.MULTILINE)
+    preamble, subsections = blocks[0], blocks[1:]
 
-    for sec in sections:
-        account_raw = sec.group(1).strip()
-        daily_total = int(sec.group(2)) if sec.group(2) else 0
-        body = sec.group(3)
+    if single and not subsections:
+        account = resolve_account(single.group(1))
+        for _, _, header, rows in iter_tables(preamble):
+            dcas.extend(dca_rows(account, header, rows))
+        return dcas
 
-        if daily_total == 0:
+    for block in subsections:
+        heading, _, rest = block.partition("\n")
+        m = re.match(r"(.*?)\s*[—–]\s*(.*)$", heading) or re.match(r"(.*?)\s+-\s+(.*)$", heading)
+        if not m:
             continue
-
-        account = resolve_account(account_raw)
-
-        # Parse the table within this section
-        lines = body.strip().splitlines()
-        in_table = False
-        for line in lines:
-            line = line.strip()
-            if not line.startswith("|"):
-                continue
-            if re.match(r"\|[\s\-|]+\|", line):
-                in_table = True
-                continue
-            if not in_table:
-                in_table = True
-                continue
-
-            cols = [c.strip() for c in line.split("|")]
-            cols = [c for c in cols if c != ""]
-
-            if len(cols) < 4:
-                continue
-
-            ticker = re.sub(r"\*\*", "", cols[0]).strip()
-
-            # Skip totals row
-            if ticker.lower() in ("total", ""):
-                continue
-
-            # Skip struck-through / paused entries
-            if ticker.startswith("~~") or "PAUSED" in line.upper() or "$0" in cols[3]:
-                continue
-
-            # Parse proposed $/day column (usually col index 3)
-            daily_match = re.search(r"\$(\d+)", cols[3])
-            daily = int(daily_match.group(1)) if daily_match else 0
-
-            if daily > 0:
-                dcas.append({
-                    "account": account,
-                    "ticker": ticker,
-                    "daily": daily,
-                    "description": f"{ticker} ${daily}/d",
-                })
+        account = resolve_account(m.group(1).strip(" *"))
+        tail = m.group(2)
+        day = re.search(r"\$(\d+)/day", tail)
+        if not day or int(day.group(1)) == 0 or re.match(r"\W*(PAUSED|\$0\b)", tail, re.IGNORECASE):
+            continue
+        parsed = []
+        for _, _, header, rows in iter_tables(rest):
+            parsed.extend(dca_rows(account, header, rows))
+        if not parsed:
+            before = tail[:day.start()]
+            tick = re.findall(r"\b[A-Z]{1,5}\b", before)
+            label = tick[-1] if tick else "DCA"
+            daily = int(day.group(1))
+            parsed = [{"account": account, "ticker": label, "daily": daily,
+                       "description": f"{label} ${daily}/d"}]
+        dcas.extend(parsed)
 
     return dcas
 
@@ -403,6 +461,8 @@ def build_account_summary(accounts: dict, orders: list, dcas: list) -> list:
             "leap_total": 0,
             "csp_collateral": 0,
             "csp_items": [],
+            "conditional_orders": [],
+            "conditional_total": 0,
         }
 
     # Aggregate DCA
@@ -421,6 +481,13 @@ def build_account_summary(accounts: dict, orders: list, dcas: list) -> list:
     for order in orders:
         acct = order["account"]
         if acct not in summaries:
+            continue
+
+        if order.get("conditional"):
+            # Only spent if the trigger fires; reported separately.
+            summaries[acct]["conditional_orders"].append(order)
+            if order["kind"] != "csp":
+                summaries[acct]["conditional_total"] += order["cost"]
             continue
 
         if order["kind"] == "csp":
@@ -452,14 +519,22 @@ def build_account_summary(accounts: dict, orders: list, dcas: list) -> list:
             s["dca_runway_weeks"] = None
 
         # Status
-        if remaining < 0:
-            s["status"] = "OVER-COMMITTED"
-        elif remaining_pct < 15:
-            s["status"] = "TIGHT"
-        else:
-            s["status"] = "OK"
+        s["status"] = cash_status(remaining, s["cash"])
+        s["remaining_if_triggered"] = remaining - s["conditional_total"]
+        s["status_if_triggered"] = cash_status(s["remaining_if_triggered"], s["cash"])
+        if any(o["cost"] == 0 for o in s["conditional_orders"]):
+            s["status_if_triggered"] = "UNKNOWN"
 
     return list(summaries.values())
+
+
+def cash_status(remaining: float, cash: float) -> str:
+    """OVER-COMMITTED below zero, TIGHT under 15% of cash left, else OK."""
+    if remaining < 0:
+        return "OVER-COMMITTED"
+    if cash > 0 and remaining / cash * 100 < 15:
+        return "TIGHT"
+    return "OK"
 
 
 def format_money(amount: float) -> str:
@@ -475,11 +550,13 @@ def status_icon(status: str) -> str:
         return "\u2705 OK"
     elif status == "TIGHT":
         return "\u26a0\ufe0f  TIGHT"
+    elif status == "UNKNOWN":
+        return "\u2753 UNKNOWN (unpriced order)"
     else:
         return "\U0001f534 OVER-COMMITTED"
 
 
-def print_terminal(plan_name: str, summaries: list):
+def print_terminal(plan_name: str, summaries: list, stats: dict):
     """Print terminal dashboard."""
     W = 70
 
@@ -493,8 +570,11 @@ def print_terminal(plan_name: str, summaries: list):
     over_committed = 0
 
     # Sort: accounts with activity first, then alphabetical
-    active = [s for s in summaries if s["total_committed"] > 0 or s["csp_collateral"] > 0]
-    inactive = [s for s in summaries if s["total_committed"] == 0 and s["csp_collateral"] == 0]
+    def has_activity(s):
+        return s["total_committed"] > 0 or s["csp_collateral"] > 0 or s["conditional_orders"]
+
+    active = [s for s in summaries if has_activity(s)]
+    inactive = [s for s in summaries if not has_activity(s)]
     display = sorted(active, key=lambda x: -x["total_committed"]) + sorted(inactive, key=lambda x: x["name"])
 
     for s in display:
@@ -533,7 +613,7 @@ def print_terminal(plan_name: str, summaries: list):
         elif s["total_committed"] > 0:
             print(f"    {'CSP collateral:':<26} {'$0':>10}  (none active)")
 
-        if s["total_committed"] > 0 or s["csp_collateral"] > 0:
+        if s["total_committed"] > 0 or s["csp_collateral"] > 0 or s["conditional_orders"]:
             print(f"  {'-' * (W - 4)}")
             pct_str = f"({s['remaining_pct']}%)"
             print(f"    {'Remaining:':<26} {format_money(s['remaining']):>10}  {pct_str:<12} {status_icon(s['status'])}")
@@ -549,6 +629,16 @@ def print_terminal(plan_name: str, summaries: list):
                     print(f"    {'If CSPs assigned:':<26} {format_money(remaining_with_csp):>10}  ({pct_with_csp:.1f}%)   \U0001f534 NEGATIVE")
                 elif pct_with_csp < 15:
                     print(f"    {'If CSPs assigned:':<26} {format_money(remaining_with_csp):>10}  ({pct_with_csp:.1f}%)   \u26a0\ufe0f  TIGHT")
+
+            if s["conditional_orders"]:
+                print()
+                print(f"    Conditional (only if triggers fire):")
+                for o in s["conditional_orders"]:
+                    cost = "UNPRICED" if o["cost"] == 0 else format_money(-o["cost"])
+                    tag = " [CSP collateral]" if o["kind"] == "csp" else ""
+                    print(f"      {cost:>10}  {o['description']}{tag}")
+                print(f"    {'If all fire:':<26} {format_money(s['remaining_if_triggered']):>10}  "
+                      f"{status_icon(s['status_if_triggered'])}")
         else:
             print(f"    {'Planned deployment:':<26} {'$0':>10}  (no orders this plan)")
 
@@ -563,11 +653,12 @@ def print_terminal(plan_name: str, summaries: list):
     print(f"    {'Total committed:':<26} {format_money(total_committed):>10}")
     print(f"    {'Total remaining:':<26} {format_money(total_remaining):>10}  ({total_pct:.1f}%)")
     print(f"    {'Over-committed accounts:':<26} {over_committed}")
+    print(f"    {'Parsed:':<26} {stats['rows']} order rows in {stats['tables']} tables")
     print("=" * W)
     print()
 
 
-def build_json(plan_name: str, summaries: list) -> dict:
+def build_json(plan_name: str, summaries: list, stats: dict, problems: list) -> dict:
     """Build JSON output."""
     total_cash = sum(s["cash"] for s in summaries)
     total_committed = sum(s["total_committed"] for s in summaries)
@@ -586,6 +677,9 @@ def build_json(plan_name: str, summaries: list) -> dict:
             "remaining": s["remaining"],
             "remaining_pct": s["remaining_pct"],
             "status": s["status"],
+            "conditional_total": s["conditional_total"],
+            "remaining_if_triggered": s["remaining_if_triggered"],
+            "status_if_triggered": s["status_if_triggered"],
         }
         if s["dca_runway_weeks"] is not None:
             entry["dca_runway_weeks"] = s["dca_runway_weeks"]
@@ -603,6 +697,11 @@ def build_json(plan_name: str, summaries: list) -> dict:
             ]
         if s["csp_items"]:
             entry["csp_detail"] = s["csp_items"]
+        if s["conditional_orders"]:
+            entry["conditional_detail"] = [
+                {"description": o["description"], "cost": o["cost"], "kind": o["kind"]}
+                for o in s["conditional_orders"]
+            ]
         accounts_json.append(entry)
 
     over_committed = sum(1 for s in summaries if s["status"] == "OVER-COMMITTED")
@@ -617,6 +716,8 @@ def build_json(plan_name: str, summaries: list) -> dict:
             "remaining_pct": round(total_remaining / total_cash * 100, 1) if total_cash > 0 else 0,
             "over_committed": over_committed,
         },
+        "parse": {"tables": stats["tables"], "order_rows": stats["rows"]},
+        "problems": problems,
     }
 
 
@@ -624,6 +725,8 @@ def main():
     parser = argparse.ArgumentParser(description="Cash check — validate plan orders against account cash")
     parser.add_argument("--plan", help="Specific plan file (e.g., PLAN-2026-09-06.md)")
     parser.add_argument("--json", action="store_true", help="JSON output")
+    parser.add_argument("--allow-empty", action="store_true",
+                        help="Don't fail when the plan has no order tables")
     args = parser.parse_args()
 
     # Find plan file
@@ -648,18 +751,38 @@ def main():
         sys.exit(1)
 
     # Parse plan
-    orders = parse_one_time_orders(plan_text)
+    orders, stats = parse_one_time_orders(plan_text)
     dcas = parse_dca_schedule(plan_text)
 
     # Build summaries
     summaries = build_account_summary(accounts, orders, dcas)
 
+    # Parse problems make the check fail loudly instead of reporting a false OK.
+    problems = []
+    if stats["rows"] == 0 and not args.allow_empty:
+        problems.append("No order rows found. The plan format may have changed: order tables "
+                        "need an 'Account' column and an 'Order' or 'Action' column.")
+    for o in stats["unpriced"]:
+        problems.append(f"Couldn't price {o['kind']} order in {o['account']}: {o['description']} "
+                        f"(write it as 'N @ $price' or 'Total ~$X')")
+    known = set(accounts)
+    for o in orders:
+        if o["account"] not in known:
+            problems.append(f"Unknown account '{o['account']}' on order: {o['description']}")
+
     # Output
     if args.json:
-        result = build_json(plan_name, summaries)
+        result = build_json(plan_name, summaries, stats, problems)
         print(json.dumps(result, indent=2))
     else:
-        print_terminal(plan_name, summaries)
+        print_terminal(plan_name, summaries, stats)
+        for p in problems:
+            print(f"  \u274c {p}", file=sys.stderr)
+
+    if problems:
+        sys.exit(2)
+    if any(s["status"] == "OVER-COMMITTED" for s in summaries):
+        sys.exit(1)
 
 
 if __name__ == "__main__":

@@ -1,0 +1,7 @@
+#!/bin/sh
+# Block personal portfolio data from this public repo. See scripts/privacy-check.py.
+# Bypass a one-off false positive with: git commit --no-verify
+ROOT=$(git rev-parse --show-toplevel)
+PY="$ROOT/.venv/bin/python3"
+[ -x "$PY" ] || PY=python3
+exec "$PY" "$ROOT/scripts/privacy-check.py"
