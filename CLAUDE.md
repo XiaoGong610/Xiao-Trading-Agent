@@ -58,11 +58,11 @@ All skills work independently — `/research-stock`, `/strategy-theta-gang`, `/p
                                 DCA schedule, orders, position management, key dates, risk budget
                                 → PLAN-YYYY-MM-DD.md. Answers: "What should I do this week?"
                                 **POST-PLAN GATES (mandatory):**
+                                  → Run plan-lint.py and fix every ERROR (covers cash-check, DCA runway,
+                                    LEAP ≤60% of cash, account option rules, contract math + CC share
+                                    coverage, put/call terminology, DCA ∝ conviction, /plan-stock coverage,
+                                    expiry dates, full account names). Deliberate exceptions: "lint-ok".
                                   → Scan ALL active sold options against harvest framework (close if >50% profit captured)
-                                  → Validate LEAP/option costs against account size (never >60% of account cash)
-                                  → Run cash-check.py to validate orders vs account cash
-                                  → Verify DCA $/day is proportional to conviction (higher conv ≥ equal $/day)
-                                  → Sanity-check option orders (share counts, contract math, terminology)
                                   → Flag off-plan positions that contradict conviction scores
                                   → Regenerate dashboard after any plan edit
 
@@ -455,6 +455,17 @@ Validates trading plan orders against account cash balances. Parses the latest (
 Shows per-account: available cash, DCA burn (1 month), limit order costs, LEAP purchases, CSP collateral (reserved), remaining cash, DCA runway, and status (OK / TIGHT / OVER-COMMITTED). Orders under a "Conditionals" heading are shown separately as "if all fire".
 
 Order tables are found by their columns (an `Account` column plus an `Order` or `Action` column), so section names can change freely. Write buy quantities as `N @ $price` (or `Total ~$X`) so they can be priced. **Exit codes:** 0 OK, 1 an account is over-committed, 2 the plan couldn't be fully parsed (no order rows, an unpriced buy, an unknown account). Treat exit 2 as a failed gate: fix the plan wording and re-run. Don't report "cash OK".
+
+### `scripts/plan-lint.py`
+The mechanical post-plan gates in one script. Runs `cash-check.py` and adds: DCA runway (< 3 weeks ERROR, 3–4 WARN), LEAP buys ≤ 60% of account cash, option orders allowed by each account's `constraints`, whole contracts and CC share coverage (new + open short calls ≤ 100-share lots), put/call terminology, DCA $/day ordered by conviction (from research frontmatter), a `/plan-stock` within 14 days for new deployments over $2K, an expiry on every option reference, and full account names.
+
+```bash
+.venv/bin/python3 scripts/plan-lint.py                          # latest plan
+.venv/bin/python3 scripts/plan-lint.py --plan PLAN-2026-09-06.md
+.venv/bin/python3 scripts/plan-lint.py --json
+```
+
+Exit 1 on any ERROR. Add `lint-ok` to a plan line to accept a deliberate exception (e.g. a user override of the conviction order). It checks against the current account and research files, so run it when the plan is written; linting an old plan compares it with today's positions.
 
 ### `scripts/privacy-check.py`
 Blocks personal data from this public repo. Runs automatically as a git pre-commit hook on staged lines. It holds no personal terms itself: at run time it reads account IDs, cash/total values, position quantities and cost-basis prices from `portfolio/accounts/*.md`, plus extra words from the gitignored `portfolio/private-terms.txt`.

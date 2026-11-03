@@ -280,16 +280,13 @@ SKIP_SECTIONS = ("dca schedule", "key dates", "risk budget", "summary", "positio
                  "post-plan gates", "reconciliation")
 
 
-def parse_one_time_orders(plan_text: str) -> tuple:
-    """Parse every order table in the plan.
+def iter_order_rows(plan_text: str):
+    """Yield every order row in the plan as a dict, whatever its kind.
 
     Plans have used several layouts ("One-Time Orders", "MUST-DO", "Should-Do",
     "Conditionals", per-stock tranche tables), so tables are found by their
-    column headers rather than by section name. Returns (orders, stats).
+    column headers rather than by section name. Also used by plan-lint.py.
     """
-    orders = []
-    stats = {"tables": 0, "rows": 0, "unpriced": []}
-
     for h2, h3, header, rows in iter_tables(plan_text):
         section = f"{h2} {h3}".lower()
         head = " ".join(header).lower()
@@ -306,11 +303,11 @@ def parse_one_time_orders(plan_text: str) -> tuple:
             continue
         trigger_i = col(header, "trigger")
         type_i = col(header, "type")
+        num_i = col(header, "#")
         detail_idx = [i for i, h in enumerate(header)
                       if i not in (order_i, acct_i)
                       and re.search(r"detail|exact order|action|order", h.lower())]
 
-        stats["tables"] += 1
         for cells in rows:
             if len(cells) <= max(order_i, acct_i):
                 continue
@@ -320,36 +317,43 @@ def parse_one_time_orders(plan_text: str) -> tuple:
             type_text = cells[type_i] if 0 <= type_i < len(cells) else ""
             detail = " ".join(cells[i] for i in detail_idx if i < len(cells))
             trigger = cells[trigger_i] if conditional and 0 <= trigger_i < len(cells) else ""
-            stats["rows"] += 1
-
-            if is_deferred(order_text, detail):
-                continue
             # A conditional's verb can sit in the trigger ("WDC: SELL 10 Monday").
             kind = classify_order(order_text if first_verb(order_text) else f"{order_text} {trigger}",
                                   type_text, detail)
-            if kind not in ("limit", "leap", "csp"):
-                continue
-
-            cost, method = order_cost(kind, f"{order_text} {detail}")
-            num_i = col(header, "#")
             desc = re.sub(r"\*\*", "", trigger or order_text).strip()
-            desc = desc[:60] + ("…" if len(desc) > 60 else "")
-            order = {
+            yield {
                 "num": cells[num_i] if 0 <= num_i < len(cells) else "",
-                "description": desc,
+                "description": desc[:60] + ("…" if len(desc) > 60 else ""),
+                "order_text": order_text,
                 "type": type_text,
-                "account": resolve_account(cells[acct_i]),
                 "detail": detail,
-                "cost": cost,
-                "cost_method": method,
+                "trigger": trigger,
+                "account": resolve_account(cells[acct_i]),
                 "kind": kind,
                 "conditional": conditional,
+                "deferred": is_deferred(order_text, detail),
                 "section": h2,
             }
-            if cost == 0:
-                stats["unpriced"].append(order)
-            orders.append(order)
 
+
+def parse_one_time_orders(plan_text: str) -> tuple:
+    """Parse the cash-deploying orders in the plan. Returns (orders, stats)."""
+    orders = []
+    stats = {"tables": 0, "rows": 0, "unpriced": []}
+    seen_sections = set()
+
+    for row in iter_order_rows(plan_text):
+        stats["rows"] += 1
+        seen_sections.add(row["section"])
+        if row["deferred"] or row["kind"] not in ("limit", "leap", "csp"):
+            continue
+        cost, method = order_cost(row["kind"], f"{row['order_text']} {row['detail']}")
+        order = dict(row, cost=cost, cost_method=method)
+        if cost == 0:
+            stats["unpriced"].append(order)
+        orders.append(order)
+
+    stats["tables"] = len(seen_sections)
     return orders, stats
 
 
@@ -653,7 +657,7 @@ def print_terminal(plan_name: str, summaries: list, stats: dict):
     print(f"    {'Total committed:':<26} {format_money(total_committed):>10}")
     print(f"    {'Total remaining:':<26} {format_money(total_remaining):>10}  ({total_pct:.1f}%)")
     print(f"    {'Over-committed accounts:':<26} {over_committed}")
-    print(f"    {'Parsed:':<26} {stats['rows']} order rows in {stats['tables']} tables")
+    print(f"    {'Parsed:':<26} {stats['rows']} order rows in {stats['tables']} sections")
     print("=" * W)
     print()
 

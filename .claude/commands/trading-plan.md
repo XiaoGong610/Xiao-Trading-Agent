@@ -236,7 +236,13 @@ Format:
 [From Step 8]
 ```
 
-2. **Regenerate the dashboard:**
+2. **Run the post-plan gates:**
+```bash
+.venv/bin/python3 scripts/plan-lint.py
+```
+Fix every ERROR in the plan and re-run until it exits 0. If the user deliberately overrides a rule (e.g. DCA out of conviction order), add `lint-ok` to that plan line instead. Don't report the plan as checked while errors remain. Still do the non-mechanical gates by hand: harvest scan of sold options (>50% captured) and off-plan positions that contradict conviction.
+
+3. **Regenerate the dashboard:**
 ```bash
 .venv/bin/python3 scripts/watchlist.py
 ```
