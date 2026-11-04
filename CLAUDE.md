@@ -456,6 +456,19 @@ Shows per-account: available cash, DCA burn (1 month), limit order costs, LEAP p
 
 Order tables are found by their columns (an `Account` column plus an `Order` or `Action` column), so section names can change freely. Write buy quantities as `N @ $price` (or `Total ~$X`) so they can be priced. **Exit codes:** 0 OK, 1 an account is over-committed, 2 the plan couldn't be fully parsed (no order rows, an unpriced buy, an unknown account). Treat exit 2 as a failed gate: fix the plan wording and re-run. Don't report "cash OK".
 
+### `scripts/option-scores.py`
+Computes the CC Sharpe Score (4 gates + composite), the CSP Score (6 components) and the LEAP gate (IV Rank < 30, no earnings within 14 days) from live yfinance data, per `knowledge/strategies/when-to-{cc,csp,leaps}.md`. Scans 0.10–0.35 delta contracts at 20–50 DTE, or scores one contract.
+
+```bash
+.venv/bin/python3 scripts/option-scores.py TICKER --cc                     # scan calls
+.venv/bin/python3 scripts/option-scores.py TICKER --cc --strike 300 --expiry 2026-12-18 --cost-basis 200
+.venv/bin/python3 scripts/option-scores.py TICKER --csp                    # scan puts
+.venv/bin/python3 scripts/option-scores.py TICKER --leap                   # gate + candidate calls
+.venv/bin/python3 scripts/option-scores.py TICKER --cc --iv-rank 42        # IV Rank from Barchart etc.
+```
+
+IV = ATM IV of the expiry nearest 30 DTE; IV-vs-realized edge uses 20-day realized vol (annualized), not ATR%. **IV Rank source** is printed every run: `--iv-rank` if given, else the daily IV log (`research/iv-history/TICKER.csv`, appended each run) once it has 120 days, else an estimate from the 1-year realized-vol range. Treat the estimate as rough; pass a real IV Rank for go/no-go calls near a threshold.
+
 ### `scripts/plan-lint.py`
 The mechanical post-plan gates in one script. Runs `cash-check.py` and adds: DCA runway (< 3 weeks ERROR, 3–4 WARN), LEAP buys ≤ 60% of account cash, option orders allowed by each account's `constraints`, whole contracts and CC share coverage (new + open short calls ≤ 100-share lots), put/call terminology, DCA $/day ordered by conviction (from research frontmatter), a `/plan-stock` within 14 days for new deployments over $2K, an expiry on every option reference, and full account names.
 

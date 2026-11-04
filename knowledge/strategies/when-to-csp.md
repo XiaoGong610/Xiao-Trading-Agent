@@ -17,9 +17,13 @@ CSP Score = (IV Rank × 0.20) + (VRP Edge × 0.10) + (AnnYield Score × 0.25) + 
 
 Components (each scaled 0-100):
   IV Rank:        Use directly (0-100). Measures premium richness relative to its own 52-week range.
-  VRP Edge:       IV < ATR% = 0, IV ≈ ATR% = 50, IV > ATR% by 10%+ = 100
+  VRP Edge:       IV < 0.9×RV20 = 0, within ±10% = 50, IV > 1.1×RV20 = 100
                   (Volatility Risk Premium — are you selling overpriced insurance? Same as CC Sharpe Gate 3.
-                   ATR% = ATR/Price × 100. Compare against current_iv from technicals.py.)
+                   RV20 = 20-day realized vol, annualized. Not ATR%: that's a daily number and
+                   always looks tiny next to annual IV.)
+  Compute with: `.venv/bin/python3 scripts/option-scores.py TICKER --csp` (scan) or `--csp --strike X --expiry YYYY-MM-DD`.
+  Earnings timing used: inside the trade < 7 days before expiry = 0, 7+ days before = 25;
+  after expiry 0-7 days = 50, 8-30 days = 75, later = 100.
   AnnYield Score: <12% = 20, 12-20% = 40, 20-35% = 65, 35-50% = 85, >50% = 100
   Buffer Score:   <5% = 15, 5-8% = 35, 8-12% = 60, 12-18% = 85, >18% = 100
   Support Score:  Above support = 20, >5% below support = 40, at support = 75, at volume shelf/HVN = 100
@@ -72,7 +76,7 @@ Instead of binary "earnings within DTE = skip," use gradations:
 
 AMD at $510.67, selling $440P expiring 2026-08-21 (32 DTE) for $21.43 mid:
 - IV Rank: ~60 (estimated) → Score: 60
-- VRP Edge: IV 40% vs ATR% ~3.36/510.67 = 0.66% → IV >> ATR%, strong edge → Score: 100
+- VRP Edge: IV 40% vs 20-day realized vol ~33% → IV > 1.1 × RV, edge → Score: 100
 - AnnYield = ($21.43 / $440) × (365/32) × 100 = **55.5%** → Score: 100
 - Breakeven = $440 - $21.43 = $418.57
 - Buffer = ($510.67 - $418.57) / $510.67 = **18.0%** → Score: 100

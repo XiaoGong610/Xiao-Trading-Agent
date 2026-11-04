@@ -16,7 +16,7 @@ Assume the user already has conviction from `/research-stock` or `/plan-stock`. 
 Use the script's output for price, support/resistance, IV, and options chain. Supplement with web search for catalysts and timeline.
 
 **Step 2: Consult knowledge base**
-- Read `knowledge/strategies/when-to-leaps.md` — apply the IV Rank × Conviction decision matrix. **IV Rank < 30 is non-negotiable.** If IV Rank > 40, recommend shares/DCA instead. If IV Rank > 60, recommend selling premium (CSP).
+- Read `knowledge/strategies/when-to-leaps.md` — apply the IV Rank × Conviction decision matrix. **IV Rank < 30 is non-negotiable.** Check it with `.venv/bin/python3 scripts/option-scores.py TICKER --leap` (also checks earnings within 14 days and lists 0.40–0.80 delta calls with cost and breakeven). If IV Rank > 40, recommend shares/DCA instead. If IV Rank > 60, recommend selling premium (CSP).
 - Read `knowledge/signals/iv-rank-guide.md` — validate against the IV Rank × RSI matrix
 - Read `knowledge/signals/rsi-guide.md` — interpret RSI in context (trend, sector beta, earnings distortion)
 - Run `.venv/bin/python3 scripts/sector-momentum.py --json` and consult `knowledge/frameworks/sector-momentum.md` — if sector is in Stage 4 downtrend, flag elevated risk for LEAPs

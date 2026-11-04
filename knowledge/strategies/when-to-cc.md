@@ -49,13 +49,16 @@ IV ≈ 20-day Realized Vol  →  NEUTRAL — no special edge, proceed only if Ga
 IV < 20-day Realized Vol  →  FAIL — options are cheap, stock is moving more than implied. No edge.
 ```
 
-**How to estimate:** Compare current IV (from `technicals.py --options`, field `options.current_iv`) against ATR as a percentage of price. ATR% is a proxy for realized volatility.
+**How to measure:** Compare the ~30-day ATM IV with 20-day realized volatility, both annualized. `scripts/option-scores.py` computes both.
 
 ```
-ATR% = (ATR / Price) × 100
-If IV% > ATR%  →  options are overpriced relative to actual moves  →  edge in selling
-If IV% < ATR%  →  options are underpriced  →  no edge
+RV20 = stdev(daily log returns, last 20 days) × √252 × 100
+IV > 1.1 × RV20        →  edge in selling (score 100)
+within ±10% of RV20    →  neutral (score 50)
+IV < 0.9 × RV20        →  no edge (score 0)
 ```
+
+Don't compare IV with ATR% (ATR / price). ATR% is a *daily* move and IV is *annual*, so IV always looks far higher and the gate always passes. (An earlier version of this doc did that.)
 
 ### Gate 4: Would you be happy selling at the strike?
 
@@ -88,6 +91,8 @@ Verdicts:
   Score < 40  →  DON'T SELL — premium doesn't justify the trade. Wait for IV expansion or higher prices.
 ```
 
+**Compute it, don't estimate it:** `.venv/bin/python3 scripts/option-scores.py TICKER --cc` (scan) or `--cc --strike X --expiry YYYY-MM-DD --cost-basis Y` (one contract). The script applies all four gates and the score. IV Rank comes from `--iv-rank` if you pass one (e.g. from Barchart), otherwise from the daily IV log in `research/iv-history/` once it has 120 days, otherwise an estimate from the 1-year realized-vol range (labelled as such). Earnings Gate timing: earnings inside the trade < 7 days before expiry = 0, 7+ days before = 25; after expiry 0–7 days = 50, 8–30 days = 75, later = 100.
+
 **Display the CC Sharpe Score before any CC recommendation.** This prevents the common mistake of selling CCs just because you own shares.
 
 ## When CCs Have Edge
@@ -103,7 +108,7 @@ Verdicts:
 - [ ] CC Sharpe Score > 60
 - [ ] IV Rank > 50 (prefer > 65)
 - [ ] Premium yield > 8% annualized (prefer > 12%)
-- [ ] IV > realized volatility (ATR% proxy)
+- [ ] IV > 20-day realized volatility (annualized)
 - [ ] Strike above cost basis
 - [ ] Strike at identifiable resistance level
 - [ ] No earnings within DTE window (unless intentional)

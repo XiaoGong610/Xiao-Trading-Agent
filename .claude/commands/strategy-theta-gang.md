@@ -27,8 +27,8 @@ This is a pure options mechanics analysis. Do NOT cover company fundamentals, gr
 Use the script's output for IV, price, support/resistance levels, and expiry data. Supplement with web search only for qualitative info the script can't provide.
 
 **Step 2: Consult knowledge base**
-- Read `knowledge/strategies/when-to-csp.md` — calculate the **CSP Score** (6-component composite: IV Rank, VRP Edge, AnnYield, Buffer %, Support, Earnings Gate) for CSP trades. If CSP Score < 45, explicitly recommend against selling CSPs.
-- Read `knowledge/strategies/when-to-cc.md` — run the CC Sharpe 4-gate check and score BEFORE recommending any covered call. If CC Sharpe Score < 40, explicitly recommend against selling CCs.
+- Read `knowledge/strategies/when-to-csp.md` — calculate the **CSP Score** (6-component composite: IV Rank, VRP Edge, AnnYield, Buffer %, Support, Earnings Gate) for CSP trades. Compute it with `.venv/bin/python3 scripts/option-scores.py TICKER --csp` (scan) or `--csp --strike X --expiry YYYY-MM-DD`, don't work it out by hand. If CSP Score < 45, explicitly recommend against selling CSPs.
+- Read `knowledge/strategies/when-to-cc.md` — run the CC Sharpe 4-gate check and score BEFORE recommending any covered call, using `.venv/bin/python3 scripts/option-scores.py TICKER --cc` (scan) or `--cc --strike X --expiry YYYY-MM-DD --cost-basis Y` (one contract). If CC Sharpe Score < 40, explicitly recommend against selling CCs.
 - Read `knowledge/signals/iv-rank-guide.md` — if IV Rank < 25, flag: "Premium too thin — consider LEAPs or shares instead"
 - Read `knowledge/signals/rsi-guide.md` — interpret RSI in sector context (high-beta sectors hit extremes routinely)
 - Run `.venv/bin/python3 scripts/sector-momentum.py --json` and consult `knowledge/frameworks/sector-momentum.md` — if sector is in Stage 4 downtrend, flag that support levels may not hold

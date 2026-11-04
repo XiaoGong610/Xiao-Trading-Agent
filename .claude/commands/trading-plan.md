@@ -110,10 +110,10 @@ Specific orders to place this week. Each order must have:
 5. Cleanup (sell no-thesis positions)
 
 **Pre-trade gates:**
-- New CC → verify CC Sharpe > 60 (from `knowledge/strategies/when-to-cc.md`)
-- New CSP → verify CSP Score > 45 (from `knowledge/strategies/when-to-csp.md`)
+- New CC → verify CC Sharpe > 60: `scripts/option-scores.py TICKER --cc --strike X --expiry D --cost-basis Y`
+- New CSP → verify CSP Score > 45: `scripts/option-scores.py TICKER --csp --strike X --expiry D`
 - New entry → verify /plan-stock exists and entry target/stop are set
-- New LEAP → verify IV < 30 gate (from `knowledge/strategies/when-to-leaps.md`)
+- New LEAP → verify the IV Rank < 30 gate: `scripts/option-scores.py TICKER --leap`
 
 For any order that fails a gate, note the failure and either skip or flag for user decision.
 
