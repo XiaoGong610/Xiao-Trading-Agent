@@ -583,7 +583,7 @@ def _action_hint(status, d):
     return 'Trim on strength'
 
 
-def _build_holdings_table(holdings, watchlist, sector_map):
+def _build_holdings_table(holdings, watchlist, sector_map, portfolio_total=None):
     """Cross-account holdings table grouped by GICS sector."""
     wl_lookup = {s['ticker']: s for s in watchlist}
 
@@ -610,11 +610,13 @@ def _build_holdings_table(holdings, watchlist, sector_map):
             'atr_pct': wl.get('atr_pct'),
             'pct_vs_sma20': wl.get('pct_vs_sma20'),
             'above_sma200': wl.get('above_sma200'),
+            'spark': wl.get('spark'),
             'sector_momentum': wl.get('sector_momentum'),
             'earnings_days': wl.get('earnings_days'),
         }
 
-    total_portfolio = sum(d['value'] for d in ticker_data.values()) or 1
+    # % of the TOTAL portfolio (account totals incl. cash), same base as the topline and pies
+    total_portfolio = portfolio_total or sum(d['value'] for d in ticker_data.values()) or 1
     overrides = _load_allocation_overrides()
 
     # Multi-factor targets, then scale down correlated clusters above the cap
@@ -658,6 +660,21 @@ def _build_holdings_table(holdings, watchlist, sector_map):
         else: cls, bg = '#8b949e', '#8b949e22'
         return (f'<span style="display:inline-block;padding:2px 8px;border-radius:12px;'
                 f'font-size:12px;font-weight:600;background:{bg};color:{cls};">{v:.1f}</span>')
+
+    def _sparkline(closes, above_200):
+        """Tiny 60-day price line; green = above 200-day (uptrend), red = below."""
+        if not closes or len(closes) < 2:
+            return ''
+        lo, hi = min(closes), max(closes)
+        span = (hi - lo) or 1
+        w, h = 56, 16
+        pts = ' '.join(f'{i * w / (len(closes) - 1):.1f},{h - (c - lo) / span * h:.1f}'
+                       for i, c in enumerate(closes))
+        color = '#3fb950' if above_200 else '#f85149' if above_200 is False else '#8b949e'
+        trend = 'above' if above_200 else 'below' if above_200 is False else 'n/a vs'
+        return (f'<svg width="{w}" height="{h}" style="vertical-align:middle;margin-right:6px;">'
+                f'<title>60-day price; {trend} 200-day average</title>'
+                f'<polyline fill="none" stroke="{color}" stroke-width="1.5" points="{pts}"/></svg>')
 
     def _rsi_cell(r):
         if r is None: return '<span style="color:#484f58">—</span>'
@@ -762,7 +779,7 @@ def _build_holdings_table(holdings, watchlist, sector_map):
                 f'<td style="text-align:right;">{value}</td>'
                 f'<td>{_alloc_bar(pct)}</td>'
                 f'<td style="text-align:center;">{_conv_badge(d["conviction"])}</td>'
-                f'<td style="text-align:center;">{_rsi_cell(d["rsi"])}</td>'
+                f'<td style="text-align:center;white-space:nowrap;">{_sparkline(d.get("spark"), d.get("above_sma200"))}{_rsi_cell(d["rsi"])}</td>'
                 f'<td style="text-align:center;">{_pe_cell(d["fwd_pe"])}</td>'
                 f'<td style="text-align:center;">{target}</td>'
                 f'<td>{status}</td>'
@@ -776,12 +793,12 @@ def _build_holdings_table(holdings, watchlist, sector_map):
         '<th style="text-align:right;">Shares</th>'
         '<th style="text-align:right;min-width:90px;">Value</th>'
         '<th style="min-width:130px;">% Portfolio</th>'
-        '<th style="text-align:center;">Conv</th>'
-        '<th style="text-align:center;">RSI</th>'
-        '<th style="text-align:center;">Fwd P/E</th>'
-        '<th style="text-align:center;">Target</th>'
-        '<th>Status</th>'
-        '<th>Action</th>'
+        '<th style="text-align:center;"><span style="white-space:nowrap;">Conv&nbsp;<span class="tip" title="Research conviction 1–10 (business quality, growth, valuation, technicals, catalyst, institutional)">&#9432;</span></span></th>'
+        '<th style="text-align:center;"><span style="white-space:nowrap;">RSI&nbsp;<span class="tip" title="14-day RSI: &lt;30 oversold, &gt;70 overbought. Read with the trend: oversold in a downtrend can keep falling">&#9432;</span></span></th>'
+        '<th style="text-align:center;"><span style="white-space:nowrap;">Fwd P/E&nbsp;<span class="tip" title="Price / next-12-month expected EPS. Green &lt;15x cheap, amber &gt;30x, red &gt;50x (compare within sector)">&#9432;</span></span></th>'
+        '<th style="text-align:center;"><span style="white-space:nowrap;">Target&nbsp;<span class="tip" title="Target weight = conviction base × valuation × volatility × sector momentum, cluster-capped (hover a value for its math). Ranges = local overrides">&#9432;</span></span></th>'
+        '<th><span style="white-space:nowrap;">Status&nbsp;<span class="tip" title="Actual vs target: on target within ±25%; gap shown in points and dollars to reach target">&#9432;</span></span></th>'
+        '<th><span style="white-space:nowrap;">Action&nbsp;<span class="tip" title="Status × timing (RSI, distance from 20-day average); earnings within 7 days → wait. Guidance, not orders">&#9432;</span></span></th>'
         '</tr></thead><tbody>'
         + ''.join(rows)
         + '</tbody></table>'
@@ -1130,7 +1147,8 @@ def generate_dashboard(watchlist, accounts, holdings, sector_map, no_open=False)
         "<p style='color:#8b949e;padding:40px;'>No upcoming earnings found.</p>"
     )
 
-    holdings_html = _build_holdings_table(holdings, watchlist, sector_map)
+    holdings_html = _build_holdings_table(holdings, watchlist, sector_map,
+                                          sum(a['total_value'] for a in accounts))
 
     # Trading plan (optional — from most recent PLAN markdown)
     plan_html, plan_date = _load_latest_plan()
@@ -1171,7 +1189,9 @@ def generate_dashboard(watchlist, accounts, holdings, sector_map, no_open=False)
   .metric .label {{ color:var(--muted); font-size:12px; text-transform:uppercase; letter-spacing:0.5px; }}
   .metric .value {{ font-size:28px; font-weight:700; margin-top:4px; }}
   table {{ width:100%; border-collapse:collapse; font-size:13px; }}
-  th {{ text-align:left; padding:8px 12px; border-bottom:2px solid var(--border);
+  .tip {{ color: #8b949e; font-size: 11px; cursor: help; font-weight: 400; }}
+.tip:hover {{ color: #58a6ff; }}
+th {{ text-align:left; padding:8px 12px; border-bottom:2px solid var(--border);
        color:var(--muted); font-weight:600; font-size:12px; text-transform:uppercase; }}
   td {{ padding:8px 12px; border-bottom:1px solid #21262d; }}
   tr:hover {{ background:var(--card); }}
@@ -1185,9 +1205,9 @@ def generate_dashboard(watchlist, accounts, holdings, sector_map, no_open=False)
 <p class="subtitle">Generated {date_str} &middot; {n_positions} positions &middot; ${total_value/1000:.0f}K portfolio</p>
 <div class="tabs">
   <div class="tab active" onclick="showTab('overview')">Portfolio</div>
+  <div class="tab" onclick="showTab('holdings')">Holdings</div>
   <div class="tab" onclick="showTab('scatter')">RSI vs P/E</div>
   <div class="tab" onclick="showTab('earnings')">Earnings</div>
-  <div class="tab" onclick="showTab('holdings')">Holdings</div>
   {plan_tab}
 </div>
 <div id="panel-overview" class="panel active">

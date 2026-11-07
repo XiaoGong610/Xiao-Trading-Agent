@@ -385,6 +385,7 @@ def _risk_stats(high, low, close) -> dict:
            'pct_vs_sma20': round((last / float(close.tail(20).mean()) - 1) * 100, 1)}
     if len(close) >= 200:
         out['above_sma200'] = last > float(close.tail(200).mean())
+    out['spark'] = [round(float(x), 2) for x in close.tail(60)]  # ~3 months, for trend sparklines
     return out
 
 
