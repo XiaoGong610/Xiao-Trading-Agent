@@ -173,6 +173,12 @@ def _build_overview(accounts, holdings, sector_map, date_str):
     if total_cash > 0:
         stock_labels.append("Cash")
         stock_vals.append(total_cash)
+    # Reconcile to the account totals: pending settlements, short options and option
+    # rows not parsed as positions. Keeps the pies on the same base as the topline.
+    unparsed = total_value - sum(stock_values.values()) - total_cash
+    if unparsed > 0:
+        stock_labels.append("Pending & options")
+        stock_vals.append(unparsed)
 
     stock_fig = go.Figure(data=[go.Pie(
         labels=stock_labels, values=stock_vals,
@@ -195,11 +201,13 @@ def _build_overview(accounts, holdings, sector_map, date_str):
         sector_values[sector] = sector_values.get(sector, 0) + value
     if total_cash > 0:
         sector_values['Cash'] = total_cash
+    if unparsed > 0:
+        sector_values['Pending & options'] = unparsed
 
     sorted_sectors = sorted(sector_values.items(), key=lambda x: -x[1])
     sector_labels = [s for s, _ in sorted_sectors]
     sector_vals = [v for _, v in sorted_sectors]
-    sector_colors = [SECTOR_COLORS.get(s, '#888') if s != 'Cash' else '#4a4a4a'
+    sector_colors = [SECTOR_COLORS.get(s, '#888') if s not in ('Cash', 'Pending & options') else '#4a4a4a'
                      for s in sector_labels]
 
     sector_fig = go.Figure(data=[go.Pie(
@@ -220,19 +228,27 @@ def _build_overview(accounts, holdings, sector_map, date_str):
     sector_html = sector_fig.to_html(include_plotlyjs=False, full_html=False, div_id="pie-sector")
 
     # --- Account bars ---
+    max_account = max((acc['total_value'] for acc in accounts), default=0)
     account_bars = ""
     for a in sorted(accounts, key=lambda x: -x['total_value']):
         pct = (a['total_value'] / total_value * 100) if total_value > 0 else 0
         display_name = ACCOUNT_DISPLAY.get(a['name'], a['name'])
         color = ACCOUNT_COLORS.get(a['name'], '#888')
         cash_pct = (a['cash'] / a['total_value'] * 100) if a['total_value'] > 0 else 0
+        # Bar length = account value relative to the largest account (largest = full width),
+        # split into invested (solid) and cash (light) segments
+        scale = a['total_value'] / max_account * 100 if max_account > 0 else 0
+        cash_w = scale * cash_pct / 100
         account_bars += (
             f'<div style="display:flex;align-items:center;gap:12px;margin-bottom:8px;">'
             f'<div style="width:160px;color:#8b949e;font-size:13px;text-align:right;">{display_name}</div>'
-            f'<div style="flex:1;background:#21262d;border-radius:4px;height:28px;position:relative;overflow:hidden;">'
-            f'<div style="width:{pct}%;background:{color};height:100%;border-radius:4px;opacity:0.85;"></div>'
-            f'<div style="position:absolute;top:4px;left:8px;font-size:12px;font-weight:600;">'
-            f'${a["total_value"]/1000:.0f}K ({pct:.1f}%)</div>'
+            f'<div style="flex:1;height:28px;position:relative;display:flex;">'
+            f'<div style="width:{scale - cash_w}%;background:{color};height:100%;'
+            f'border-radius:4px 0 0 4px;opacity:0.85;"></div>'
+            f'<div style="width:{cash_w}%;background:{color};height:100%;'
+            f'border-radius:0 4px 4px 0;opacity:0.3;"></div>'
+            f'<div style="position:absolute;top:5px;left:8px;font-size:12px;font-weight:600;">'
+            f'${a["total_value"]/1000:.0f}K · {pct:.1f}% of total</div>'
             f'</div>'
             f'<div style="width:80px;color:#8b949e;font-size:12px;">cash {cash_pct:.0f}%</div>'
             f'</div>'
@@ -269,7 +285,8 @@ def _build_overview(accounts, holdings, sector_map, date_str):
       </div>
     </div>
     <div style="background:#161b22;border:1px solid #30363d;border-radius:8px;padding:16px;">
-      <div style="font-size:14px;font-weight:600;margin-bottom:12px;">Account Breakdown</div>
+      <div style="font-size:14px;font-weight:600;margin-bottom:4px;">Account Breakdown</div>
+      <div style="font-size:11px;color:#8b949e;margin-bottom:12px;">Bar length = account value (largest account = full width) · solid = invested · light = cash</div>
       {account_bars}
     </div>
     """
