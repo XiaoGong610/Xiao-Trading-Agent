@@ -199,6 +199,18 @@ Format:
 ```markdown
 # Weekly Trading Plan | YYYY-MM-DD
 
+## At a Glance
+| When | Account | Order | Price / Trigger |
+|------|---------|-------|-----------------|
+| Mon 10:00–11:30 | AccountName | GTC sell 100 XYZ | $123.45 |
+| On trigger | AccountName | Sell 1× XYZ $150C Jan 15 | first green day with XYZ ≥ $140 |
+
+**DCA:** AccountName $X/day (TICKER $a · TICKER $b) · **Key dates:** Tue CPI · Thu ABC earnings · …
+
+*(Keep this section ≤ 12 rows, one line per order, full account names, no reasoning. The dashboard shows it first and collapses everything else under "Show full plan".)*
+
+---
+
 **Regime:** [from market overview]
 
 **Portfolio: $XXX,XXX (+/-$X / +/-X% WoW).** [key narrative]

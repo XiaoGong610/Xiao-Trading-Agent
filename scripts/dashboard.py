@@ -825,7 +825,17 @@ def _load_latest_plan() -> tuple[str, str]:
     plan_date = plan_path.stem.replace('PLAN-', '')
     content = plan_path.read_text(encoding="utf-8")
 
-    return _render_plan_md(content), plan_date
+    # Show the "At a Glance" section up front; collapse the full plan below it
+    import re
+    m = re.search(r'^## At a Glance.*?(?=^## |^---\s*$|\Z)', content, re.M | re.S)
+    if not m:
+        return _render_plan_md(content), plan_date
+    glance = m.group(0)
+    rest = content[:m.start()] + content[m.end():]
+    return (_render_plan_md(glance)
+            + '<details style="margin-top:20px;"><summary style="cursor:pointer;color:#58a6ff;'
+              'font-size:14px;font-weight:600;padding:8px 0;">Show full plan ▸</summary>'
+            + _render_plan_md(rest) + '</details>'), plan_date
 
 
 def _md_inline(text: str) -> str:
