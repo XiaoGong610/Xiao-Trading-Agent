@@ -528,7 +528,7 @@ Panels: Market Regime, Sector Momentum, Top Picks, RSI vs FwdPE Scatter, Convict
 Reference docs in `knowledge/` for investment decision-making. Skills consult these for context and nuance.
 
 - `signals/` — RSI, IV rank, MACD, MA, volume interpretation guides, breakout filter, market day types
-- `frameworks/` — AI capital flow model, valuation benchmarks, crypto 4-year cycle, sector momentum, evidence ladder (source grading + red flags), **tax rules** (multi-account sell order, wash sales, tax-loss harvesting, lot disposal method, straddle rules for hedging short-term shares, RSUs / trading windows / 10b5-1 plans)
+- `frameworks/` — AI capital flow model, valuation benchmarks, crypto 4-year cycle, sector momentum, evidence ladder (source grading + red flags), **position sizing** (decision flow: conviction → target → status → action; multi-factor targets), **tax rules** (multi-account sell order, wash sales, tax-loss harvesting, lot disposal method, straddle rules for hedging short-term shares, RSUs / trading windows / 10b5-1 plans)
 - `sectors/` — sector-specific metrics and cycle dynamics (semiconductors)
 - `strategies/` — when to sell CSPs (**CSP Score** 6-component composite, Buffer %, graded Earnings Gate), **when to sell CCs** (CC Sharpe 4-gate check, graded Earnings Gate, **Ladder Rule** for ≥2 contracts, backtest-based timing evidence), when to buy LEAPs, **execution framework** (order types, stops, exits, position sizing)
 - `reference/` — influencer tracking (X/Twitter; search every account for every ticker, since the focus column isn't a filter), ThetaGang.com leaders

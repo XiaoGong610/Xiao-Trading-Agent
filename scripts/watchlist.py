@@ -75,6 +75,14 @@ MOMENTUM_BONUS = {
 }
 
 # Map stock frontmatter sector names → GICS sector names from sector-momentum.py
+# GICS sector -> SPDR sector ETF (for 1-month relative strength)
+SECTOR_ETFS = {
+    "Technology": "XLK", "Healthcare": "XLV", "Financials": "XLF",
+    "Consumer Disc.": "XLY", "Consumer Staples": "XLP", "Energy": "XLE",
+    "Industrials": "XLI", "Materials": "XLB", "Real Estate": "XLRE",
+    "Utilities": "XLU", "Communication": "XLC",
+}
+
 SECTOR_TO_GICS = {
     "Semiconductors": "Technology",
     "Semiconductors / Memory": "Technology",
@@ -384,7 +392,25 @@ def _risk_stats(high, low, close) -> dict:
     out = {'atr_pct': round(float(tr.tail(14).mean()) / last * 100, 2),
            'pct_vs_sma20': round((last / float(close.tail(20).mean()) - 1) * 100, 1)}
     if len(close) >= 200:
-        out['above_sma200'] = last > float(close.tail(200).mean())
+        sma200 = float(close.tail(200).mean())
+        out['above_sma200'] = last > sma200
+        out['pct_vs_sma200'] = round((last / sma200 - 1) * 100, 1)
+    year = close.tail(252)
+    out['pct_off_high'] = round((last / float(year.max()) - 1) * 100, 1)  # vs 52-week high
+    # 1-year trend chart: weekly-ish points of price and the 200-day average, plus the high's position
+    step = 4
+    out['trend_px'] = [round(float(x), 2) for x in year.iloc[::-1][::step][::-1]]
+    sma = close.rolling(200).mean().tail(252)
+    out['trend_sma'] = [None if x != x else round(float(x), 2) for x in sma.iloc[::-1][::step][::-1]]
+    out['trend_hi_idx'] = int(len(out['trend_px']) - 1 - ((len(year) - 1 - int(year.values.argmax())) // step))
+    # 60-day RSI line (Wilder) for the RSI chart
+    d = close.diff()
+    gain = d.clip(lower=0).ewm(alpha=1 / 14, adjust=False).mean()
+    loss = (-d.clip(upper=0)).ewm(alpha=1 / 14, adjust=False).mean()
+    rsi = 100 - 100 / (1 + gain / loss.replace(0, float('nan')))
+    out['rsi_spark'] = [round(float(x), 1) for x in rsi.tail(60).fillna(50)]
+    if len(close) > 21:
+        out['ret_1m'] = round((last / float(close.iloc[-22]) - 1) * 100, 1)
     out['spark'] = [round(float(x), 2) for x in close.tail(60)]  # ~3 months, for trend sparklines
     return out
 
@@ -405,7 +431,8 @@ def get_market_data(tickers: list[str]) -> tuple[dict, dict, dict, dict]:
 
     try:
         # 6mo of history so Wilder's RSI smoothing converges (1mo gave distorted values)
-        data = yf.download(us_tickers, period="1y", progress=False)
+        us_tickers = list(dict.fromkeys(us_tickers + list(SECTOR_ETFS.values())))
+        data = yf.download(us_tickers, period="2y", progress=False)  # 2y: 200-day line across a 1y chart
         for t in us_tickers:
             try:
                 if len(us_tickers) == 1:
@@ -443,9 +470,26 @@ def get_market_data(tickers: list[str]) -> tuple[dict, dict, dict, dict]:
         for t in us_tickers:
             try:
                 info = yf.Ticker(t).info
+                if info.get('quoteType') == 'ETF':
+                    risk.setdefault(t, {})['is_etf'] = True
                 pe = info.get('forwardPE')
                 if pe and pe > 0:
                     fwd_pe[t] = round(float(pe), 1)
+                elif info.get('quoteType') == 'ETF' and (info.get('trailingPE') or 0) > 0:
+                    # Yahoo has no forward P/E for ETFs; fall back to trailing and flag it
+                    fwd_pe[t] = round(float(info['trailingPE']), 1)
+                    risk.setdefault(t, {})['pe_trailing'] = True
+                # Next earnings date from Yahoo (more reliable than scanning research text)
+                ts = info.get('earningsTimestampStart') or info.get('earningsTimestamp')
+                if ts:
+                    from zoneinfo import ZoneInfo
+                    et = datetime.fromtimestamp(ts, ZoneInfo('America/New_York'))
+                    r = risk.setdefault(t, {})
+                    r['earnings_live'] = et.date()
+                    # Before market open / after close (midnight = time unknown)
+                    if not (et.hour == 0 and et.minute == 0):
+                        r['earnings_time'] = 'BMO' if et.hour < 12 else 'AMC' if et.hour >= 16 else 'during market'
+                    r['earnings_est'] = bool(info.get('isEarningsDateEstimate'))
             except Exception:
                 pass
 
@@ -759,6 +803,16 @@ def load_and_classify() -> list[dict]:
             print(f"  ⚠ unmapped sector '{s['sector']}' for {ticker}", file=sys.stderr)
         result = classify_stock(s, price, momentum, rsi=rsi, fwd_pe=pe)
         result.update(risk_values.get(ticker, {}))
+        live = result.pop('earnings_live', None)
+        if live and live >= datetime.now().date():
+            result['earnings'] = live.strftime('%b %d')
+            result['earnings_iso'] = live.isoformat()
+            result['earnings_days'] = (live - datetime.now().date()).days
+        etf = SECTOR_ETFS.get(gics_sector) if gics_sector else None
+        etf_ret = risk_values.get(etf, {}).get('ret_1m') if etf else None
+        if result.get('ret_1m') is not None and etf_ret is not None:
+            result['rs_1m'] = round(result['ret_1m'] - etf_ret, 1)  # pts vs sector ETF
+            result['rs_etf'] = etf
         result['filepath'] = s.get('filepath')
         result['last_update'] = s.get('last_update')
         classified.append(result)

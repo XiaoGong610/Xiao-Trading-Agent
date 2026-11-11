@@ -294,6 +294,141 @@ def _build_overview(accounts, holdings, sector_map, date_str):
 
 # --- Tab 2: RSI vs P/E Scatter ---
 
+# --- Opportunity Map (replaces the old RSI vs P/E scatter) ---
+
+_SECTOR_ALIASES = {'Consumer Disc.': 'Consumer Discretionary', 'Communication': 'Communication Services'}
+
+
+def _trend_svg(px, sma, hi_idx, above_200, w=250, h=60):
+    """Larger 1-year trend chart for the opportunity card."""
+    if not px or len(px) < 2:
+        return '<div style="color:#484f58;font-size:12px;">No price history</div>'
+    vals = px + [v for v in (sma or []) if v is not None]
+    lo, hi = min(vals), max(vals)
+    span = (hi - lo) or 1
+    n = len(px)
+    X = lambda i: i * w / (n - 1)
+    Y = lambda v: h - 2 - (v - lo) / span * (h - 4)
+    color = '#3fb950' if above_200 else '#f85149' if above_200 is False else '#8b949e'
+    price = ' '.join(f'{X(i):.1f},{Y(v):.1f}' for i, v in enumerate(px))
+    sma_pts = ' '.join(f'{X(i):.1f},{Y(v):.1f}' for i, v in enumerate(sma or []) if v is not None)
+    dot = (f'<circle cx="{X(hi_idx):.1f}" cy="{Y(px[hi_idx]):.1f}" r="3" fill="#e6edf3"/>'
+           if hi_idx is not None and 0 <= hi_idx < n else '')
+    return (f'<svg width="{w}" height="{h}">'
+            f'<polyline fill="none" stroke="#8b949e" stroke-width="1" stroke-dasharray="4,3" points="{sma_pts}"/>'
+            f'<polyline fill="none" stroke="{color}" stroke-width="2" points="{price}"/>{dot}</svg>')
+
+
+def _build_opportunity_map(stocks, sector_map, date_str):
+    """RSI (x) vs valuation relative to the sector band (y); color = trend, shape = held/watchlist,
+    size = conviction. Hover or click a point to see its card with the 1-year trend chart."""
+    import json as _json
+    import math
+    pts = []
+    placed = []   # (x, y) of labels already placed, to avoid overlaps
+
+    def _label_pos(x, y):
+        options = ['top center', 'bottom center', 'middle right', 'middle left']
+        crowd = sum(1 for px, py in placed if abs(px - x) < 4 and abs(py - y) < 0.18)
+        placed.append((x, y))
+        return options[crowd % len(options)]
+    for st in stocks:
+        rsi, pe = st.get('rsi'), st.get('fwd_pe')
+        if rsi is None or pe is None:
+            continue
+        sector = sector_map.get(st['ticker'], 'Other')
+        cheap, rich = PE_BANDS.get(_SECTOR_ALIASES.get(sector, sector), (15, 35))
+        val = (pe - cheap) / ((rich - cheap) or 1)          # 0 = cheap line, 1 = rich line
+        y = val if val <= 1.5 else 1.5 + math.log1p(val - 1.5) * 0.5   # compress the rich tail
+        pts.append((st, max(-0.6, y), val, cheap, rich, sector))
+
+    held_pts = [p for p in pts if p[0].get('held_in')]
+    watch_pts = [p for p in pts if not p[0].get('held_in')]
+    cards = []
+
+    def _trace(group, name, symbol):
+        xs, ys, colors, sizes, texts, idx, tpos = [], [], [], [], [], [], []
+        for st, y, val, cheap, rich, sector in group:
+            above = st.get('above_sma200')
+            conv = st.get('conviction')
+            xs.append(st['rsi']); ys.append(y); texts.append(st['ticker'])
+            tpos.append(_label_pos(st['rsi'], y))
+            colors.append('#3fb950' if above else '#f85149' if above is False else '#8b949e')
+            sizes.append(8 + 2.2 * float(conv or 4))
+            label = 'cheap' if val < 0 else 'rich' if val > 1 else 'fair'
+            v200 = st.get('pct_vs_sma200'); off = st.get('pct_off_high')
+            ed = st.get('earnings_days')
+            earn_txt = (f' · <b style="color:#d29922">earnings in {ed}d</b>'
+                        if ed is not None and 0 <= ed <= 14 else '')
+            card = (
+                f'<div style="font-size:18px;font-weight:700;color:#e6edf3;">{st["ticker"]} '
+                f'<span style="font-size:12px;font-weight:400;color:#8b949e;">{sector} · {"held" if st.get("held_in") else "watchlist"}</span></div>'
+                f'<div style="margin:6px 0 10px;font-size:13px;color:#c9d1d9;">'
+                f'Price <b>${(st.get("price") or 0):,.2f}</b> · Conv <b>{conv if conv is not None else "—"}</b> · '
+                f'RSI <b>{st["rsi"]:.0f}</b><br>'
+                f'Fwd P/E <b>{st["fwd_pe"]:.1f}x</b> ({label}; sector band {cheap}–{rich}x)<br>'
+                f'vs 200D <b>{"—" if v200 is None else f"{v200:+.0f}%"}</b> · Off high <b>{"—" if off is None else f"{off:+.0f}%"}</b>'
+                f'{earn_txt}'
+                f'</div>{_trend_svg(st.get("trend_px"), st.get("trend_sma"), st.get("trend_hi_idx"), above)}'
+                f'<div style="font-size:11px;color:#8b949e;margin-top:4px;">1-year price · dashed = 200-day avg · dot = 52-week high</div>'
+                f'<div style="font-size:12px;color:#8b949e;margin-top:8px;">{(st.get("thesis") or "")[:260]}</div>')
+            idx.append(len(cards)); cards.append(card)
+        return go.Scatter(
+            x=xs, y=ys, mode='markers+text', name=name, text=texts, textposition=tpos,
+            textfont=dict(size=10, color='#c9d1d9'), customdata=idx,
+            marker=dict(symbol=symbol, size=sizes, color=colors, opacity=0.85,
+                        line=dict(width=1.5 if symbol == 'circle' else 1, color='#e6edf3')),
+            hovertemplate='<b>%{text}</b><extra></extra>')
+
+    fig = go.Figure([_trace(held_pts, 'Held', 'circle'), _trace(watch_pts, 'Watchlist', 'diamond')])
+    for y, lbl in ((0, 'cheap line'), (1, 'rich line')):
+        fig.add_hline(y=y, line_dash='dash', line_color='#484f58', annotation_text=lbl,
+                      annotation_position='right', annotation_font=dict(color='#8b949e', size=10))
+    for x in (30, 70):
+        fig.add_vline(x=x, line_dash='dot', line_color='#484f58')
+    fig.add_annotation(x=11, y=-0.72, text='CHEAP + OVERSOLD → buy candidates if green', showarrow=False,
+                       font=dict(color='#3fb950', size=10), xanchor='left', yanchor='bottom')
+    fig.add_annotation(x=84, y=max([2.0] + [p[1] for p in pts]) + 0.2, text='RICH + OVERBOUGHT → trim / avoid', showarrow=False,
+                       font=dict(color='#f85149', size=10), xanchor='right', yanchor='top')
+    fig.update_layout(
+        title=None,
+        xaxis=dict(title='RSI (14) — oversold ← → overbought', range=[10, 85], gridcolor='#21262d'),
+        yaxis=dict(title='Valuation vs sector (0 = cheap line, 1 = rich line; top compressed)',
+                   range=[-0.75, max([2.0] + [p[1] for p in pts]) + 0.25],
+                   gridcolor='#21262d', zeroline=False),
+        height=660, margin=dict(t=60, l=60, r=20, b=60),
+        paper_bgcolor='#0d1117', plot_bgcolor='#0d1117', font=dict(color='white'),
+        legend=dict(orientation='h', y=1.06, x=1, xanchor='right', yanchor='bottom'),
+        updatemenus=[dict(type='buttons', direction='right', x=0, y=1.06, xanchor='left', yanchor='bottom',
+                          bgcolor='#21262d', font=dict(color='#c9d1d9', size=11),
+                          buttons=[dict(label='All', method='restyle', args=['visible', [True, True]]),
+                                   dict(label='Watchlist only', method='restyle', args=['visible', [False, True]]),
+                                   dict(label='Held only', method='restyle', args=['visible', [True, False]])])])
+    plot = fig.to_html(include_plotlyjs=False, full_html=False, div_id='oppmap')
+    return (
+        '<div style="font-size:12px;color:#8b949e;margin-bottom:6px;">'
+        f'<b style="color:#e6edf3;">Opportunity Map · {date_str}</b> &nbsp;·&nbsp; '
+        '<b style="color:#e6edf3;">Color = trend:</b> '
+        '<span style="color:#3fb950;">● above 200-day (uptrend)</span> &nbsp; '
+        '<span style="color:#f85149;">● below 200-day (downtrend)</span> &nbsp; '
+        '<span style="color:#8b949e;">● no data</span> &nbsp;·&nbsp; '
+        '<b style="color:#e6edf3;">Shape:</b> ● held &nbsp;◆ watchlist &nbsp;·&nbsp; '
+        '<b style="color:#e6edf3;">Size:</b> conviction</div>'
+        '<div style="display:grid;grid-template-columns:minmax(0,1fr) 280px;gap:16px;align-items:start;">'
+        f'<div>{plot}</div>'
+        '<div id="opp-card" style="background:#161b22;border:1px solid #30363d;border-radius:8px;padding:14px;'
+        'position:sticky;top:12px;min-height:200px;color:#8b949e;font-size:13px;box-sizing:border-box;'
+        'width:280px;overflow-wrap:anywhere;overflow:hidden;">'
+        'Hover or click a stock to see its card and 1-year trend.</div></div>'
+        f'<script>(function(){{var cards={_json.dumps(cards)};'
+        'function bind(){var gd=document.getElementById("oppmap");'
+        'if(!gd||!gd.on){return setTimeout(bind,200);}'
+        'var show=function(ev){var p=ev.points[0];if(p&&p.customdata!==undefined)'
+        '{document.getElementById("opp-card").innerHTML=cards[p.customdata];}};'
+        'gd.on("plotly_hover",show);gd.on("plotly_click",show);}'
+        'bind();})();</script>')
+
+
 def _build_scatter(stocks, date_str):
     """RSI vs Forward P/E scatter plot with held stock markers."""
     plottable = [s for s in stocks
@@ -390,6 +525,14 @@ def _build_earnings(stocks, date_str):
         earn_str = s.get('earnings')
         if days is None or days <= 0 or earn_str is None:
             continue
+        if s.get('earnings_iso'):   # live date from Yahoo, with timing
+            entries.append({
+                'ticker': s['ticker'], 'earnings_date': date.fromisoformat(s['earnings_iso']),
+                'days_until': days, 'sector': s.get('sector', ''),
+                'conviction': s.get('conviction'), 'held': bool(s.get('held_in')),
+                'timing': s.get('earnings_time'), 'estimate': s.get('earnings_est'),
+            })
+            continue
         for fmt in ['%B %d, %Y', '%B %d', '%b %d, %Y', '%b %d']:
             try:
                 dt = datetime.strptime(earn_str.strip('*'), fmt)
@@ -423,10 +566,13 @@ def _build_earnings(stocks, date_str):
         if d < 30: return "UPCOMING"
         return "SAFE"
 
-    tickers = [e['ticker'] for e in entries]
+    # Held positions are marked with ● so your own names stand out
+    tickers = [('● ' if e['held'] else '') + e['ticker'] for e in entries]
     days = [e['days_until'] for e in entries]
     colors = [urgency_color(d) for d in days]
-    dates = [e['earnings_date'].strftime('%b %d') for e in entries]
+    dates = [e['earnings_date'].strftime('%a %b %d')
+             + (f" · {e['timing']}" if e.get('timing') else '')
+             + (' (est.)' if e.get('estimate') else '') for e in entries]
 
     hover_texts = []
     for e in entries:
@@ -434,7 +580,9 @@ def _build_earnings(stocks, date_str):
         held = "Yes" if e['held'] else "No"
         hover_texts.append(
             f"<b>{e['ticker']}</b><br>"
-            f"Earnings: {e['earnings_date'].strftime('%b %d, %Y')}<br>"
+            f"Earnings: {e['earnings_date'].strftime('%a %b %d, %Y')}"
+            f"{' · ' + {'BMO': 'before market open', 'AMC': 'after market close'}.get(e.get('timing'), e.get('timing') or '') if e.get('timing') else ''}"
+            f"{' (estimated)' if e.get('estimate') else ''}<br>"
             f"Days: {e['days_until']}<br>"
             f"Sector: {e['sector']}<br>"
             f"Conv: {conv}<br>"
@@ -583,7 +731,7 @@ def _action_hint(status, d):
     return 'Trim on strength'
 
 
-def _build_holdings_table(holdings, watchlist, sector_map, portfolio_total=None):
+def _build_holdings_table(holdings, watchlist, sector_map, portfolio_total=None, portfolio_cash=0.0):
     """Cross-account holdings table grouped by GICS sector."""
     wl_lookup = {s['ticker']: s for s in watchlist}
 
@@ -611,6 +759,15 @@ def _build_holdings_table(holdings, watchlist, sector_map, portfolio_total=None)
             'pct_vs_sma20': wl.get('pct_vs_sma20'),
             'above_sma200': wl.get('above_sma200'),
             'spark': wl.get('spark'),
+            'pe_trailing': wl.get('pe_trailing'),
+            'is_etf': wl.get('is_etf'),
+            'price': wl.get('price'),
+            'trend_px': wl.get('trend_px'), 'trend_sma': wl.get('trend_sma'),
+            'trend_hi_idx': wl.get('trend_hi_idx'), 'rsi_spark': wl.get('rsi_spark'),
+            'pct_vs_sma200': wl.get('pct_vs_sma200'),
+            'pct_off_high': wl.get('pct_off_high'),
+            'rs_1m': wl.get('rs_1m'),
+            'rs_etf': wl.get('rs_etf'),
             'sector_momentum': wl.get('sector_momentum'),
             'earnings_days': wl.get('earnings_days'),
         }
@@ -676,6 +833,81 @@ def _build_holdings_table(holdings, watchlist, sector_map, portfolio_total=None)
                 f'<title>60-day price; {trend} 200-day average</title>'
                 f'<polyline fill="none" stroke="{color}" stroke-width="1.5" points="{pts}"/></svg>')
 
+    def _pct_cell(v, good_above=0.0):
+        if v is None: return '<span style="color:#484f58">—</span>'
+        color = '#3fb950' if v >= good_above else '#f85149' if v <= -20 else '#d29922'
+        return f'<span style="color:{color}">{v:+.0f}%</span>'
+
+    def _rs_arrow(rs, etf):
+        if rs is None: return ''
+        if rs >= 15: a, c = '↑↑', '#3fb950'
+        elif rs >= 5: a, c = '↑', '#3fb950'
+        elif rs <= -15: a, c = '↓↓', '#f85149'
+        elif rs <= -5: a, c = '↓', '#f85149'
+        else: a, c = '→', '#8b949e'
+        return (f'<span title="1-month return vs {etf}: {rs:+.1f} pts" '
+                f'style="color:{c};font-size:11px;margin-left:4px;cursor:help;">{a}</span>')
+
+    def _price_cell(price, spark):
+        if not price: return '<span style="color:#484f58">—</span>'
+        chg = ''
+        if spark and len(spark) >= 2 and spark[-2]:
+            pct = (spark[-1] / spark[-2] - 1) * 100
+            c = '#3fb950' if pct > 0 else '#f85149' if pct < 0 else '#8b949e'
+            chg = (f'<br><span title="Change vs the previous trading day\'s close" '
+                   f'style="color:{c};font-size:11px;cursor:help;">{pct:+.1f}%</span>')
+        return f'${price:,.2f}{chg}'
+
+    def _etf_badge(is_etf):
+        if not is_etf: return ''
+        return (' <span title="Exchange-traded fund (basket of stocks)" style="display:inline-block;'
+                'padding:0 5px;border-radius:8px;font-size:10px;font-weight:600;'
+                'background:#58a6ff22;color:#58a6ff;cursor:help;">ETF</span>')
+
+    def _earn_badge(days):
+        if days is None or not (0 <= days <= 14): return ''
+        c = '#f85149' if days <= 7 else '#d29922'
+        return (f' <span title="Earnings in {days} days" style="display:inline-block;padding:0 5px;'
+                f'border-radius:8px;font-size:10px;font-weight:600;background:{c}33;color:{c};">'
+                f'E {days}d</span>')
+
+    def _trend_chart(px, sma, hi_idx, above_200):
+        """1-year price (solid), 200-day average (dashed), dot at the 52-week high."""
+        if not px or len(px) < 2:
+            return ''
+        vals = px + [v for v in (sma or []) if v is not None]
+        lo, hi = min(vals), max(vals)
+        span = (hi - lo) or 1
+        w, h = 84, 22
+        n = len(px)
+        X = lambda i: i * w / (n - 1)
+        Y = lambda v: h - 1 - (v - lo) / span * (h - 2)
+        color = '#3fb950' if above_200 else '#f85149' if above_200 is False else '#8b949e'
+        price = ' '.join(f'{X(i):.1f},{Y(v):.1f}' for i, v in enumerate(px))
+        sma_pts = ' '.join(f'{X(i):.1f},{Y(v):.1f}' for i, v in enumerate(sma or []) if v is not None)
+        dot = ''
+        if hi_idx is not None and 0 <= hi_idx < n:
+            dot = f'<circle cx="{X(hi_idx):.1f}" cy="{Y(px[hi_idx]):.1f}" r="2" fill="#e6edf3"/>'
+        return (f'<svg width="{w}" height="{h}" style="vertical-align:middle;">'
+                f'<title>1-year price (line), 200-day average (dashed), dot = 52-week high</title>'
+                f'<polyline fill="none" stroke="#8b949e" stroke-width="1" stroke-dasharray="3,2" points="{sma_pts}"/>'
+                f'<polyline fill="none" stroke="{color}" stroke-width="1.5" points="{price}"/>{dot}</svg>')
+
+    def _rsi_chart(vals):
+        """60-day RSI line with faint 30/70 bands."""
+        if not vals or len(vals) < 2:
+            return ''
+        # Same size as the trend chart; scale 15–85 (where RSI lives) so moves are visible
+        w, h, lo, hi = 84, 22, 15.0, 85.0
+        Y = lambda v: h - 1 - (min(max(v, lo), hi) - lo) / (hi - lo) * (h - 2)
+        pts = ' '.join(f'{i * w / (len(vals) - 1):.1f},{Y(v):.1f}' for i, v in enumerate(vals))
+        last = vals[-1]
+        c = '#3fb950' if last < 30 else '#f85149' if last > 70 else '#58a6ff'
+        return (f'<svg width="{w}" height="{h}" style="vertical-align:middle;margin-right:6px;">'
+                f'<title>60-day RSI; bands at 30 and 70</title>'
+                f'<rect x="0" y="{Y(70):.1f}" width="{w}" height="{Y(30) - Y(70):.1f}" fill="#30363d" opacity="0.5"/>'
+                f'<polyline fill="none" stroke="{c}" stroke-width="1.5" points="{pts}"/></svg>')
+
     def _rsi_cell(r):
         if r is None: return '<span style="color:#484f58">—</span>'
         v = float(r)
@@ -686,13 +918,16 @@ def _build_holdings_table(holdings, watchlist, sector_map, portfolio_total=None)
         else: color = '#8b949e'
         return f'<span style="color:{color};font-weight:500">{v:.0f}</span>'
 
-    def _pe_cell(p):
+    def _pe_cell(p, trailing=False):
         if p is None: return '<span style="color:#484f58">—</span>'
         v = float(p)
         if v < 15: color = '#3fb950'     # cheap
         elif v > 50: color = '#f85149'   # expensive
         elif v > 30: color = '#d29922'
         else: color = '#8b949e'
+        if trailing:
+            return (f'<span style="color:{color}" title="Trailing P/E (ETF: no forward estimate available)">'
+                    f'{v:.1f}x <span style="font-size:10px;color:#8b949e;cursor:help;">T</span></span>')
         return f'<span style="color:{color}">{v:.1f}x</span>'
 
     def _alloc_bar(pct):
@@ -733,12 +968,15 @@ def _build_holdings_table(holdings, watchlist, sector_map, portfolio_total=None)
         else:
             color = '#f85149' if far else '#d29922'
             label = ('Far ' if far else '') + status
-            badge = (f'<span style="color:{color};font-weight:600">{label} {gap:+.1f}pt</span>'
+            badge = (f'<span style="color:{color};font-weight:600;white-space:nowrap;">{label} {gap:+.1f}pt</span>'
                      f'<br><span style="color:#8b949e;font-size:11px;">~${dollars/1000:.1f}K</span>')
         title = ' · '.join(d['factors']) if d['factors'] else (ov[2] if ov else '')
         target_cell = f'<span style="color:#8b949e;cursor:help;" title="{title}">{target_txt}</span>'
         if ov:
-            hint = f'<span style="color:#8b949e">Exception: {ov[2] or "set locally"}</span>'
+            note = (ov[2] or 'set locally').replace('"', "'")
+            hint = (f'<span title="{note}" style="display:inline-block;padding:1px 8px;border-radius:10px;'
+                    f'background:#8b949e22;color:#8b949e;font-size:11px;cursor:help;white-space:nowrap;">'
+                    f'Exception &#9432;</span>')
         else:
             hint = _action_hint(status, d)
         return target_cell, badge, hint
@@ -757,10 +995,10 @@ def _build_holdings_table(holdings, watchlist, sector_map, portfolio_total=None)
             f'<td style="border-left:4px solid {color};padding-left:12px;">'
             f'{sector} <span style="color:#484f58;font-weight:400;font-size:12px;">'
             f'({n_stocks})</span></td>'
-            f'<td></td><td></td>'
+            f'<td></td><td></td><td></td>'
             f'<td style="text-align:right;font-size:15px;">${sector_total/1000:.0f}K</td>'
             f'<td>{_alloc_bar(sector_pct)}</td>'
-            f'<td></td><td></td><td></td><td></td><td></td><td></td></tr>'
+            f'<td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td></tr>'
         )
 
         for d in sectors[sector]:
@@ -773,29 +1011,68 @@ def _build_holdings_table(holdings, watchlist, sector_map, portfolio_total=None)
 
             rows.append(
                 f'<tr style="background:{bg};">'
-                f'<td style="padding-left:28px;font-weight:500;">{d["ticker"]}</td>'
+                f'<td style="padding-left:28px;font-weight:500;white-space:nowrap;">{d["ticker"]}{_etf_badge(d.get("is_etf"))}{_earn_badge(d.get("earnings_days"))}</td>'
                 f'<td style="color:#8b949e;font-size:12px;">{d["accounts"]}</td>'
                 f'<td style="text-align:right;color:#8b949e;">{shares}</td>'
+                f'<td style="text-align:right;white-space:nowrap;">{_price_cell(d.get("price"), d.get("spark"))}</td>'
                 f'<td style="text-align:right;">{value}</td>'
                 f'<td>{_alloc_bar(pct)}</td>'
+                f'<td style="text-align:center;">{_trend_chart(d.get("trend_px"), d.get("trend_sma"), d.get("trend_hi_idx"), d.get("above_sma200"))}</td>'
+                f'<td style="text-align:center;">{_pct_cell(d.get("pct_vs_sma200"))}</td>'
+                f'<td style="text-align:center;">{_pct_cell(d.get("pct_off_high"), good_above=-5.0)}</td>'
+                f'<td style="text-align:center;white-space:nowrap;">{_rsi_chart(d.get("rsi_spark"))}{_rsi_cell(d["rsi"])}{_rs_arrow(d.get("rs_1m"), d.get("rs_etf"))}</td>'
+                f'<td style="text-align:center;">{_pe_cell(d["fwd_pe"], d.get("pe_trailing"))}</td>'
                 f'<td style="text-align:center;">{_conv_badge(d["conviction"])}</td>'
-                f'<td style="text-align:center;white-space:nowrap;">{_sparkline(d.get("spark"), d.get("above_sma200"))}{_rsi_cell(d["rsi"])}</td>'
-                f'<td style="text-align:center;">{_pe_cell(d["fwd_pe"])}</td>'
                 f'<td style="text-align:center;">{target}</td>'
                 f'<td>{status}</td>'
-                f'<td style="font-size:12px;">{hint}</td></tr>'
+                f'<td style="font-size:12px;white-space:nowrap;">{hint}</td></tr>'
             )
+
+    # Footer: what the portfolio would look like if every target were met
+    actual_sum = target_sum = 0.0
+    for d in ticker_data.values():
+        pct = d['value'] / total_portfolio * 100
+        actual_sum += pct
+        if d.get('override'):
+            lo, hi = d['override'][0], d['override'][1]
+            target_sum += min(max(pct, lo), hi)   # exceptions: current, clamped into their band
+        elif d.get('target') is not None:
+            target_sum += d['target']
+        else:
+            target_sum += pct                     # no conviction: assume unchanged
+    cash_pct = portfolio_cash / total_portfolio * 100           # settled cash (same as topline)
+    pending_pct = max(0.0, 100 - actual_sum - cash_pct)          # pending settlements & options
+    need = target_sum - actual_sum
+    total_if = target_sum + cash_pct + pending_pct
+    color = '#f85149' if total_if > 100.5 else '#3fb950'
+    verdict = (f'over-allocated by {total_if - 100:.1f} pts: would need ~${need / 100 * total_portfolio / 1000:.0f}K '
+               f'of new money or trims' if total_if > 100.5 else 'fits within the portfolio')
+    rows.append(
+        f'<tr style="background:#161b22;border-top:2px solid #30363d;font-weight:600;">'
+        f'<td colspan="5" style="padding-left:12px;">If all targets were met '
+        f'<span class="tip" title="Formula names at their target; exceptions at their current weight clamped into their band; '
+        f'names without conviction unchanged; cash kept at today\'s level">&#9432;</span></td>'
+        f'<td colspan="11" style="white-space:nowrap;">Holdings <b>{target_sum:.1f}%</b> '
+        f'<span style="color:#8b949e;font-weight:400;">(today {actual_sum:.1f}%)</span> + cash {cash_pct:.1f}% '
+        f'+ pending {pending_pct:.1f}% = '
+        f'<span style="color:{color};">{total_if:.1f}%</span> '
+        f'<span style="color:#8b949e;font-weight:400;">· {verdict}</span></td></tr>'
+    )
 
     return (
         '<table style="font-size:13px;"><thead><tr>'
         '<th style="min-width:140px;">Sector / Ticker</th>'
         '<th>Accounts</th>'
         '<th style="text-align:right;">Shares</th>'
+        '<th style="text-align:right;"><span style="white-space:nowrap;">Price&nbsp;<span class="tip" title="Latest price (live during market hours, else the last close). % = change vs the previous trading day\'s close">&#9432;</span></span></th>'
         '<th style="text-align:right;min-width:90px;">Value</th>'
         '<th style="min-width:130px;">% Portfolio</th>'
-        '<th style="text-align:center;"><span style="white-space:nowrap;">Conv&nbsp;<span class="tip" title="Research conviction 1–10 (business quality, growth, valuation, technicals, catalyst, institutional)">&#9432;</span></span></th>'
-        '<th style="text-align:center;"><span style="white-space:nowrap;">RSI&nbsp;<span class="tip" title="14-day RSI: &lt;30 oversold, &gt;70 overbought. Read with the trend: oversold in a downtrend can keep falling">&#9432;</span></span></th>'
+        '<th style="text-align:center;"><span style="white-space:nowrap;">Trend 1Y&nbsp;<span class="tip" title="1-year price (green above / red below the 200-day average), dashed line = 200-day average, dot = 52-week high">&#9432;</span></span></th>'
+        '<th style="text-align:center;"><span style="white-space:nowrap;">vs 200D&nbsp;<span class="tip" title="% above/below the 200-day average. Positive = long-term uptrend; below −20% = deep downtrend">&#9432;</span></span></th>'
+        '<th style="text-align:center;"><span style="white-space:nowrap;">Off High&nbsp;<span class="tip" title="% below the 52-week high: how much has been given back. Use with RSI to judge dip vs breakdown">&#9432;</span></span></th>'
+        '<th style="text-align:center;"><span style="white-space:nowrap;">RSI&nbsp;<span class="tip" title="14-day RSI: &lt;30 oversold, &gt;70 overbought. Read with the trend: oversold in a downtrend can keep falling. Chart = 60-day RSI with the 30–70 band shaded; arrow = 1-month strength vs sector ETF">&#9432;</span></span></th>'
         '<th style="text-align:center;"><span style="white-space:nowrap;">Fwd P/E&nbsp;<span class="tip" title="Price / next-12-month expected EPS. Green &lt;15x cheap, amber &gt;30x, red &gt;50x (compare within sector)">&#9432;</span></span></th>'
+        '<th style="text-align:center;"><span style="white-space:nowrap;">Conv&nbsp;<span class="tip" title="Research conviction 1–10 (business quality, growth, valuation, technicals, catalyst, institutional)">&#9432;</span></span></th>'
         '<th style="text-align:center;"><span style="white-space:nowrap;">Target&nbsp;<span class="tip" title="Target weight = conviction base × valuation × volatility × sector momentum, cluster-capped (hover a value for its math). Ranges = local overrides">&#9432;</span></span></th>'
         '<th><span style="white-space:nowrap;">Status&nbsp;<span class="tip" title="Actual vs target: on target within ±25%; gap shown in points and dollars to reach target">&#9432;</span></span></th>'
         '<th><span style="white-space:nowrap;">Action&nbsp;<span class="tip" title="Status × timing (RSI, distance from 20-day average); earnings within 7 days → wait. Guidance, not orders">&#9432;</span></span></th>'
@@ -1146,9 +1423,7 @@ def generate_dashboard(watchlist, accounts, holdings, sector_map, no_open=False)
     overview_html = _build_overview(accounts, holdings, sector_map, date_str)
 
     all_stocks = [s for s in watchlist if s.get('tier') in ('active', 'candidate', 'passive')]
-    scatter_fig = _build_scatter(all_stocks, date_str)
-    scatter_html = scatter_fig.to_html(
-        include_plotlyjs=False, full_html=False, div_id="scatter")
+    scatter_html = _build_opportunity_map(all_stocks, sector_map, date_str)
 
     earnings_fig = _build_earnings(all_stocks, date_str)
     earnings_html = (
@@ -1157,8 +1432,30 @@ def generate_dashboard(watchlist, accounts, holdings, sector_map, no_open=False)
         "<p style='color:#8b949e;padding:40px;'>No upcoming earnings found.</p>"
     )
 
+    # Data-freshness note for the Holdings tab
+    _now = datetime.now()
+    _acct_dates = sorted({a['last_updated'] for a in accounts if a.get('last_updated')})
+    _pos_date = _acct_dates[-1] if _acct_dates else 'unknown'
+    if len(_acct_dates) > 1:
+        _pos_date = f"{_acct_dates[0]} – {_acct_dates[-1]}"
+    data_note = (
+        '<div style="background:#161b22;border:1px solid #30363d;border-radius:6px;padding:8px 12px;'
+        'margin-bottom:12px;font-size:12px;color:#8b949e;">'
+        f'<b style="color:#e6edf3;">Data as of:</b> Prices, RSI, charts &amp; P/E: Yahoo Finance, pulled '
+        f'{_now.strftime("%a %b %d, %Y %I:%M %p")} (latest close if after hours) · '
+        f'Shares, Value, % &amp; targets: account files from brokerage screenshots dated <b style="color:#e6edf3;">{_pos_date}</b>'
+        '</div>'
+        '<div style="display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-bottom:12px;font-size:12px;color:#8b949e;">'
+        '<b style="color:#e6edf3;">How this table decides:</b>'
+        '<span title="Mostly fundamentals + ~1/8 technicals, from the research file (slow-moving)" style="cursor:help;padding:2px 8px;border-radius:10px;background:#58a6ff22;color:#58a6ff;">Conviction</span>&rarr;'
+        '<span title="Conviction × valuation × volatility × sector momentum, cluster-capped. Exceptions use a local band" style="cursor:help;padding:2px 8px;border-radius:10px;background:#58a6ff22;color:#58a6ff;">Target %</span>&rarr;'
+        '<span title="Actual % of total portfolio vs target; within ±25% = on target" style="cursor:help;padding:2px 8px;border-radius:10px;background:#58a6ff22;color:#58a6ff;">Status</span>&rarr;'
+        '<span title="Status × live technicals (RSI, trend, 20-day stretch, earnings within 7 days)" style="cursor:help;padding:2px 8px;border-radius:10px;background:#3fb95022;color:#3fb950;">Action</span>'
+        '<span style="margin-left:6px;">Conviction &amp; target = <i>how much</i> to own · live technicals = <i>when</i> to act</span>'
+        '</div>')
     holdings_html = _build_holdings_table(holdings, watchlist, sector_map,
-                                          sum(a['total_value'] for a in accounts))
+                                          sum(a['total_value'] for a in accounts),
+                                          sum(a['cash'] for a in accounts))
 
     # Trading plan (optional — from most recent PLAN markdown)
     plan_html, plan_date = _load_latest_plan()
@@ -1201,9 +1498,9 @@ def generate_dashboard(watchlist, accounts, holdings, sector_map, no_open=False)
   table {{ width:100%; border-collapse:collapse; font-size:13px; }}
   .tip {{ color: #8b949e; font-size: 11px; cursor: help; font-weight: 400; }}
 .tip:hover {{ color: #58a6ff; }}
-th {{ text-align:left; padding:8px 12px; border-bottom:2px solid var(--border);
+th {{ text-align:left; padding:8px 8px; border-bottom:2px solid var(--border);
        color:var(--muted); font-weight:600; font-size:12px; text-transform:uppercase; }}
-  td {{ padding:8px 12px; border-bottom:1px solid #21262d; }}
+  td {{ padding:7px 8px; border-bottom:1px solid #21262d; }}
   tr:hover {{ background:var(--card); }}
   .guide {{ background:var(--card); padding:12px 20px; font-size:13px; color:var(--muted);
             line-height:1.6; border-top:1px solid var(--border); margin-top:20px; border-radius:8px; }}
@@ -1216,7 +1513,7 @@ th {{ text-align:left; padding:8px 12px; border-bottom:2px solid var(--border);
 <div class="tabs">
   <div class="tab active" onclick="showTab('overview')">Portfolio</div>
   <div class="tab" onclick="showTab('holdings')">Holdings</div>
-  <div class="tab" onclick="showTab('scatter')">RSI vs P/E</div>
+  <div class="tab" onclick="showTab('scatter')">Opportunity Map</div>
   <div class="tab" onclick="showTab('earnings')">Earnings</div>
   {plan_tab}
 </div>
@@ -1226,16 +1523,22 @@ th {{ text-align:left; padding:8px 12px; border-bottom:2px solid var(--border);
 <div id="panel-scatter" class="panel">
   {scatter_html}
   <div class="guide">
-    <b>How to read:</b> Each dot = one stock.
-    <b>X-axis:</b> RSI (momentum) — left is oversold, right is overbought.
-    <b>Y-axis:</b> Forward P/E (valuation) — bottom is cheap, top is expensive.
-    <span style="color:#66bb6a"><b>Bottom-left</b></span> = best opportunities (oversold + cheap).
-    <span style="color:#ef5350"><b>Top-right</b></span> = most stretched.
-    Dot color = sector. Bigger dot = closer to entry target. <b>Thick border = held in portfolio.</b> Hover for details.
+    <b>How to read:</b> Each point = one stock. <b>X</b> = RSI (left oversold, right overbought).
+    <b>Y</b> = forward P/E relative to its sector band (below 0 = cheap for its sector, above 1 = rich).
+    <b>Color</b> = trend: <span style="color:#3fb950">green above the 200-day</span>, <span style="color:#f85149">red below</span>.
+    <b>Shape</b>: ● held · ◆ watchlist. <b>Size</b> = conviction. Bottom-left green points = candidates for new money; red there = possible falling knives.
+    Use the buttons to show watchlist only. Hover or click a point for its card with the 1-year trend.
   </div>
 </div>
 <div id="panel-earnings" class="panel">
+  <div style="font-size:12px;color:#8b949e;margin:4px 0 10px;">
+    <b style="color:#e6edf3;">BMO</b> = before market open: results come out pre-market, so the stock reacts <b>that same day</b>. &nbsp;·&nbsp;
+    <b style="color:#e6edf3;">AMC</b> = after market close: results come out after 4pm ET, so the reaction trades <b>the next morning</b>. &nbsp;·&nbsp;
+    <b style="color:#e6edf3;">(est.)</b> = date not yet confirmed by the company. &nbsp;·&nbsp;
+    <b style="color:#e6edf3;">●</b> = you hold it.
+  </div>
   {earnings_html}
+  
   <div class="guide">
     <b>How to read:</b> Each bar = days until earnings.
     <span style="color:#ef5350">Red</span> = &lt;7 days (imminent),
@@ -1246,7 +1549,8 @@ th {{ text-align:left; padding:8px 12px; border-bottom:2px solid var(--border);
   </div>
 </div>
 <div id="panel-holdings" class="panel">
-  {holdings_html}
+  {data_note}
+  <div style="overflow-x:auto;">{holdings_html}</div>
   <div class="guide">
     <b>How to read:</b> All positions grouped by GICS sector, aggregated across accounts.
     Conv / RSI / Fwd P/E from watchlist data. Sector rows show total value and portfolio weight.

@@ -2,6 +2,28 @@
 
 Conviction says how much you believe in a business. It doesn't say how much to own. This framework separates **how much** (target weight) from **when** (timing), and uses several metrics for both. The dashboard Holdings tab (`scripts/dashboard.py`) implements it.
 
+## Decision Flow (how the layers fit)
+
+```
+Conviction  ← mostly fundamentals + a little technicals (research snapshot, slow-moving)
+     ↓
+Target %    ← conviction × valuation × volatility × sector momentum (cluster-capped)
+     ↓
+Status      ← actual % of total portfolio vs target (±25% = on target)
+     ↓
+Action      ← status × live technicals (RSI, trend, earnings timing)
+```
+
+**Where technicals enter (three places, three jobs):**
+
+| Layer | Technicals used | Role |
+|---|---|---|
+| Conviction (`/research-stock`) | Trend/SMA stack, RSI/MACD, support/resistance, volume, sector stage, as of the research date | ~1/8 of the score (Business and Growth count 2x). A broken chart nudges conviction; it doesn't define it |
+| Target (this framework) | Sector momentum only | Scales the target for the whole group (×1.1 accelerating, ×0.8 downtrend) |
+| Action (dashboard, live) | RSI, distance from the 20-day, 200-day + sector (overlay), earnings within 7 days | Decides *when* to add or trim, never *how much* |
+
+**Rule of thumb:** conviction and the target answer **"how much should I own?"** (they change slowly). Live technicals answer **"is now a good moment to change it?"** (every rebuild). An oversold reading on an on-target position means **Hold**, not Buy.
+
 ## 1. Target weight = conviction base × adjustments
 
 | Factor | Measure | Multiplier | Rationale |
