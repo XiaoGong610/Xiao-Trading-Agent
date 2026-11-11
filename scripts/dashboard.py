@@ -1084,6 +1084,91 @@ def _build_holdings_table(holdings, watchlist, sector_map, portfolio_total=None,
 
 # --- Tab 5: Trading Plan (from latest PLAN markdown) ---
 
+def _render_glance(glance_md: str) -> str:
+    """Render the plan's At a Glance section as grouped, color-coded order cards."""
+    import re
+    rows, dca, dates = [], '', ''
+    for line in glance_md.splitlines():
+        t = line.strip()
+        if t.startswith('|') and not set(t) <= set('|-: '):
+            cells = [c.strip() for c in t.strip('|').split('|')]
+            if len(cells) >= 4 and cells[0].lower() != 'when':
+                rows.append(cells[:4])
+        elif t.startswith('**DCA:**'):
+            parts = t.split('**Key dates:**')
+            dca = parts[0].replace('**DCA:**', '').strip(' ·')
+            dates = parts[1].strip() if len(parts) > 1 else ''
+
+    def group(when):
+        w = when.lower()
+        if w.startswith('mon'): return 'Monday · 10:00–11:30 ET'
+        if w.startswith('by'): return when
+        if w.startswith('stop') or 'trigger' in w or w.startswith('on/after'): return 'Triggers & stops'
+        if w.startswith('watch'): return 'Watch'
+        return when
+
+    def chip(text, fg, bg):
+        return (f'<span style="display:inline-block;min-width:72px;text-align:center;padding:2px 8px;'
+                f'border-radius:10px;font-size:11px;font-weight:700;background:{bg};color:{fg};">{text}</span>')
+
+    def action(order):
+        o = order.lower()
+        if 'buy back' in o: return chip('BUY BACK', '#58a6ff', '#58a6ff22')
+        if o.startswith('cancel'): return chip('CANCEL', '#8b949e', '#8b949e22')
+        if o.startswith('close'): return chip('CLOSE', '#d29922', '#d2992222')
+        if 'sell' in o: return chip('SELL', '#f85149', '#f8514922')
+        if 'buy' in o: return chip('BUY', '#3fb950', '#3fb95022')
+        return chip('WATCH', '#a371f7', '#a371f722')
+
+    groups = {}
+    for when, acct, order, price in rows:
+        groups.setdefault(group(when), []).append((when, acct, order, price))
+
+    md = lambda x: re.sub(r'\*\*(.+?)\*\*', r'<b>\1</b>', x)
+    html = ['<div style="font-size:18px;font-weight:700;margin:4px 0 12px;">This week at a glance</div>']
+    for g, items in groups.items():
+        html.append(f'<div style="background:#161b22;border:1px solid #30363d;border-radius:8px;margin-bottom:12px;">'
+                    f'<div style="padding:8px 14px;border-bottom:1px solid #30363d;font-weight:700;color:#e6edf3;">{g}</div>')
+        for when, acct, order, price in items:
+            sub = '' if group(when) == when or g.startswith('Monday') else f'<span style="color:#8b949e;font-size:11px;"> · {when}</span>'
+            html.append(
+                '<div style="display:grid;grid-template-columns:90px 130px 1fr minmax(160px,auto);gap:12px;'
+                'align-items:center;padding:8px 14px;border-bottom:1px solid #21262d;font-size:13px;">'
+                f'<div>{action(order)}</div><div style="color:#8b949e;">{acct}</div>'
+                f'<div>{md(order)}{sub}</div><div style="text-align:right;font-weight:600;">{md(price)}</div></div>')
+        html.append('</div>')
+    if dca or dates:
+        def split_top(x):
+            # split on ' · ' only outside parentheses
+            out, depth, cur = [], 0, ''
+            i = 0
+            while i < len(x):
+                ch = x[i]
+                depth += ch == '('
+                depth -= ch == ')'
+                if depth == 0 and x.startswith(' · ', i):
+                    out.append(cur); cur = ''; i += 3; continue
+                cur += ch; i += 1
+            out.append(cur)
+            return [o.strip() for o in out if o.strip()]
+
+        def fmt(item):
+            # "Roth IRA $450/day (NVDA 150 · LLY 150)" -> "Roth IRA  $450/day — NVDA $150 · LLY $150"
+            m = re.match(r'^(.*?)\s*(\$[\d,]+/day)\s*\((.*)\)\s*$', item)
+            if m:
+                mix = re.sub(r'([A-Z]{1,5}) (\d+)', r'\1 $\2', m.group(3))
+                return f'<b>{m.group(1)}</b> {m.group(2)} <span style="color:#8b949e;">— {mix}</span>'
+            return md(item)
+
+        items = lambda x: ''.join(f'<li style="margin:4px 0;">{fmt(p)}</li>' for p in split_top(x))
+        html.append('<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">'
+                    '<div style="background:#161b22;border:1px solid #30363d;border-radius:8px;padding:10px 14px;">'
+                    f'<div style="font-weight:700;margin-bottom:4px;">DCA</div><ul style="margin:0;padding-left:18px;font-size:13px;">{items(dca)}</ul></div>'
+                    '<div style="background:#161b22;border:1px solid #30363d;border-radius:8px;padding:10px 14px;">'
+                    f'<div style="font-weight:700;margin-bottom:4px;">Key dates</div><ul style="margin:0;padding-left:18px;font-size:13px;">{items(dates)}</ul></div></div>')
+    return ''.join(html)
+
+
 def _load_latest_plan() -> tuple[str, str]:
     """Find and render the most recent PLAN markdown as HTML.
 
@@ -1109,7 +1194,7 @@ def _load_latest_plan() -> tuple[str, str]:
         return _render_plan_md(content), plan_date
     glance = m.group(0)
     rest = content[:m.start()] + content[m.end():]
-    return (_render_plan_md(glance)
+    return (_render_glance(glance)
             + '<details style="margin-top:20px;"><summary style="cursor:pointer;color:#58a6ff;'
               'font-size:14px;font-weight:600;padding:8px 0;">Show full plan ▸</summary>'
             + _render_plan_md(rest) + '</details>'), plan_date
@@ -1465,9 +1550,6 @@ def generate_dashboard(watchlist, accounts, holdings, sector_map, no_open=False)
     if plan_html:
         plan_panel = f"""
 <div id="panel-plan" class="panel">
-  <div class="guide" style="margin-bottom:16px;margin-top:0;">
-    Source: <code>portfolio/plans/PLAN-{plan_date}.md</code>
-  </div>
   {plan_html}
 </div>"""
 
