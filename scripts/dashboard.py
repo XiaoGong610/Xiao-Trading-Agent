@@ -78,10 +78,13 @@ ACCOUNT_DISPLAY = {
 
 def load_watchlist_json() -> list[dict]:
     """Load watchlist data from stdin or by running watchlist.py --json."""
-    # Try stdin first (when piped from watchlist.py)
+    # Try stdin first (when piped from watchlist.py). Only read if data arrives promptly:
+    # a non-TTY stdin that never sends EOF (agent/tool shells, cron) would otherwise block forever.
+    import select
     if not sys.stdin.isatty():
         try:
-            data = sys.stdin.read()
+            ready, _, _ = select.select([sys.stdin], [], [], 5.0)
+            data = sys.stdin.read() if ready else ""
             if data.strip():
                 return json.loads(data)
         except (json.JSONDecodeError, ValueError):
