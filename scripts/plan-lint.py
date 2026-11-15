@@ -7,6 +7,8 @@ plus local data (portfolio/accounts/*.md, research/stocks/*.md), so it reflects 
 current files rather than what the plan text claims.
 
 Checks:
+  accounts        account-check.py: account files are valid inputs (bare numbers, clean
+                  tickers, cash net of pending, positions + cash reconcile to total_value)
   cash            cash-check.py results: parse problems, over-committed accounts
   runway          DCA runway per account: < 3 weeks ERROR, 3-4 weeks WARN
   leap-budget     LEAP buys in an account <= 60% of its cash
@@ -42,6 +44,9 @@ RESEARCH_DIR = ROOT / "research" / "stocks"
 
 _spec = importlib.util.spec_from_file_location("cash_check", Path(__file__).with_name("cash-check.py"))
 cc = importlib.util.module_from_spec(_spec)
+_aspec = importlib.util.spec_from_file_location("account_check", Path(__file__).with_name("account-check.py"))
+ac = importlib.util.module_from_spec(_aspec)
+_aspec.loader.exec_module(ac)
 _spec.loader.exec_module(cc)
 
 MONTH = r"(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?"
@@ -179,6 +184,14 @@ def ok_line(plan_text: str, needle: str) -> bool:
 
 
 # ---------------------------------------------------------------- checks
+
+def check_accounts(rep):
+    """Inputs first: a bad account file makes every downstream number wrong."""
+    rep.checked("accounts")
+    findings, _ = ac.run_checks()
+    for level, acct, check, msg in findings:
+        rep.add(level, "accounts", f"{acct} · {check}: {msg}")
+
 
 def check_cash(rep, plan_name, plan_text, accounts):
     rep.checked("cash")
@@ -347,6 +360,7 @@ def main():
     rows = list(cc.iter_order_rows(plan_text))
 
     rep = Report()
+    check_accounts(rep)
     check_cash(rep, plan_path.name, plan_text, accounts)
     check_rows(rep, plan_text, plan_date, accounts, rows)
     check_dca(rep, plan_text)

@@ -22,7 +22,10 @@ All skills work independently — `/research-stock`, `/strategy-theta-gang`, `/p
 
 ```
 1. UPDATE ACCOUNTS    → User shares brokerage screenshots (or starts fresh).
-                        Refresh portfolio/accounts/*.md.
+                        Refresh portfolio/accounts/*.md (frontmatter cash = screenshot
+                        cash minus pending activity, bare number).
+                        GATE: .venv/bin/python3 scripts/account-check.py → fix every ERROR
+                        before anything reads the files.
 
 2. ADD NEW PICKS      → User mentions new stocks (friend tips, news, ideas).
                         Add as candidates: .venv/bin/python3 scripts/watchlist.py --add TICKER
@@ -479,6 +482,16 @@ The mechanical post-plan gates in one script. Runs `cash-check.py` and adds: DCA
 ```
 
 Exit 1 on any ERROR. Add `lint-ok` to a plan line to accept a deliberate exception (e.g. a user override of the conviction order). It checks against the current account and research files, so run it when the plan is written; linting an old plan compares it with today's positions.
+
+### `scripts/account-check.py`
+Validates `portfolio/accounts/*.md`, the input to every other script. Run it right after updating accounts from screenshots; plan-lint also runs it as its first check (`accounts`).
+
+```bash
+.venv/bin/python3 scripts/account-check.py         # terminal report
+.venv/bin/python3 scripts/account-check.py --json
+```
+
+Checks: required frontmatter with bare-number `cash`/`total_value` (no inline comments), freshness (> 7 days WARN), clean ticker/option labels in position cells (notes like splits go in the text), no duplicate rows, **cash net of pending** (frontmatter cash equal to the screenshot cash while a pending debit exists → ERROR), and **positions + cash reconcile to total_value** within max($100, 0.1%). Exit 1 on any ERROR.
 
 ### `scripts/privacy-check.py`
 Blocks personal data from this public repo. Runs automatically as a git pre-commit hook on staged lines. It holds no personal terms itself: at run time it reads account IDs, cash/total values, position quantities and cost-basis prices from `portfolio/accounts/*.md`, plus extra words from the gitignored `portfolio/private-terms.txt`.
