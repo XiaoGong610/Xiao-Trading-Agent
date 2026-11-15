@@ -493,6 +493,17 @@ Validates `portfolio/accounts/*.md`, the input to every other script. Run it rig
 
 Checks: required frontmatter with bare-number `cash`/`total_value` (no inline comments), freshness (> 7 days WARN), clean ticker/option labels in position cells (notes like splits go in the text), no duplicate rows, **cash net of pending** (frontmatter cash equal to the screenshot cash while a pending debit exists → ERROR), and **positions + cash reconcile to total_value** within max($100, 0.1%). Exit 1 on any ERROR.
 
+### `scripts/execution-diff.py`
+Scores last week's plan against what actually changed. Compares the latest snapshot in `portfolio/snapshots/` (saved by `account-check.py --snapshot`) with the current account files, and matches each change to the plan's orders and DCA schedule.
+
+```bash
+.venv/bin/python3 scripts/execution-diff.py          # latest snapshot → current, plan in between
+.venv/bin/python3 scripts/execution-diff.py --md     # markdown table for the review
+.venv/bin/python3 scripts/execution-diff.py --json
+```
+
+Verdicts: ✅ done · ⚠️ partial · ⏳ open (GTC/keep/trigger-based, not filled) · ❌ not done · ❌ still buying (a cancel/pause the position contradicts) · ❔ manual. Also lists **off-plan** changes (no order or DCA line explains them) and the execution rate. Conditionals appear only when their ticker moved. `/portfolio-review` Step 0b starts from this. Exit 2 when there's no prior snapshot yet.
+
 ### `scripts/privacy-check.py`
 Blocks personal data from this public repo. Runs automatically as a git pre-commit hook on staged lines. It holds no personal terms itself: at run time it reads account IDs, cash/total values, position quantities and cost-basis prices from `portfolio/accounts/*.md`, plus extra words from the gitignored `portfolio/private-terms.txt`.
 

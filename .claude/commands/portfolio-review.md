@@ -56,6 +56,8 @@ constraints:
 
 Find the most recent plan file: `portfolio/plans/PLAN-*.md` (sort by date, take latest). If no prior plan exists, skip this step.
 
+**Start from the mechanical diff:** `.venv/bin/python3 scripts/execution-diff.py --md` compares last week's snapshot (`portfolio/snapshots/<date>/`) with the current account files and scores every plan order (done / partial / open / not done / still buying) plus off-plan changes. Use its table as the scorecard, then add judgment: why items slipped, which carry-forwards need a decision. If it exits 2 (no prior snapshot), fall back to the manual steps below.
+
 1. **Read the prior plan's "One-Time Orders" and "Position Management" tables.**
 2. **For each item, check against current account files** — did the position change? Was the option rolled/closed? Was the stock sold?
 3. **Show an execution scorecard:**
