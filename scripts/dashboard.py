@@ -731,32 +731,66 @@ def _action_hint(status, d):
     return 'Trim on strength'
 
 
+_PLAN_ORDER_SECTIONS = ('one-time orders', 'conditionals', 'at a glance', 'dca schedule')  # priority order
+
+
+def _plan_orders(tickers: set) -> dict[str, str]:
+    """Planned-order text per ticker from the latest PLAN's order sections (HTML-escaped).
+    One-Time Orders and Conditionals win over At a Glance, which wins over the DCA Schedule."""
+    import html as _html
+    import re
+    plans = sorted(Path("portfolio/plans").glob("PLAN-*.md"), reverse=True)
+    if not plans:
+        return {}
+    best: dict[str, tuple[int, str]] = {}
+    section = ''
+    for line in plans[0].read_text(encoding="utf-8").splitlines():
+        if line.startswith('## '):
+            section = line[3:].strip().lower()
+            continue
+        rank = next((i for i, s in enumerate(_PLAN_ORDER_SECTIONS) if section.startswith(s)), None)
+        if rank is None or not line.startswith('|') or set(line) <= set('|-: '):
+            continue
+        cells = [c.strip() for c in line.strip('|').split('|')]
+        for t in set(re.findall(r'\b[A-Z]{2,5}\b', line)) & tickers:
+            if t in best and best[t][0] <= rank:
+                continue
+            # skip cells that lead with a different ticker ("NBIS: MSFT/META deferral" is about NBIS)
+            hits = [c for c in cells if t in c and not (
+                (m := re.match(r'\W*([A-Z]{2,5})\W*:', c)) and m.group(1) != t)]
+            if not hits:
+                continue
+            cell = max(hits, key=len)
+            text = re.sub(r'\*\*|`|~~', '', cell)
+            if text.strip() == t and section.startswith('dca schedule') and len(cells) > 3:
+                text = f'Daily buy {re.sub(r"[*~]", "", cells[3])}/day'   # DCA row: Proposed $/Day column
+            text = text if len(text) <= 160 else text[:157] + '…'
+            best[t] = (rank, _html.escape(text))
+    return {t: text for t, (_, text) in best.items()}
+
+
+def _near_entry(wl_lookup: dict, exclude: set, min_conv: float = 7.0, max_gap: float = 10.0) -> list[str]:
+    """Unheld watchlist names with conviction >= min_conv trading at or below entry target + max_gap%."""
+    out = []
+    for t, d in wl_lookup.items():
+        if t in exclude:
+            continue
+        try:
+            conv, gap = float(d.get('conviction')), float(d.get('gap_pct'))
+        except (TypeError, ValueError):
+            continue
+        if conv >= min_conv and gap <= max_gap:
+            out.append(t)
+    return sorted(out, key=lambda t: float(wl_lookup[t]['gap_pct']))
+
+
 def _on_deck_candidates(wl_lookup: dict, held: set) -> list[tuple[str, str, str]]:
     """Unheld watchlist tickers we intend to trade: named in the latest PLAN's order/conditional
     tables, or with a /plan-stock ('Pre-Trade Plan') entry dated within 14 days.
     Returns [(ticker, source label, planned order text)]."""
-    import html as _html
     import re
-    found: dict[str, tuple[str, str]] = {}
-    plans = sorted(Path("portfolio/plans").glob("PLAN-*.md"), reverse=True)
-    order_sections = ('at a glance', 'dca schedule', 'one-time orders', 'conditionals')
-    if plans:
-        section = ''
-        for line in plans[0].read_text(encoding="utf-8").splitlines():
-            if line.startswith('## '):
-                section = line[3:].strip().lower()
-                continue
-            if not section.startswith(order_sections):
-                continue
-            if not line.startswith('|') or set(line) <= set('|-: '):
-                continue
-            for t in set(re.findall(r'\b[A-Z]{2,5}\b', line)):
-                if t in wl_lookup and t not in held and t not in found:
-                    cells = [c.strip() for c in line.strip('|').split('|')]
-                    cell = max((c for c in cells if t in c), key=len, default='')
-                    text = re.sub(r'\*\*|`', '', cell)
-                    text = text if len(text) <= 160 else text[:157] + '…'
-                    found[t] = ('plan', _html.escape(text))
+    found: dict[str, tuple[str, str]] = {
+        t: ('plan', text) for t, text in _plan_orders(set(wl_lookup)).items() if t not in held}
     cutoff = date.today().toordinal() - 14
     for t in wl_lookup:
         if t in held or t in found:
@@ -1023,6 +1057,14 @@ def _build_holdings_table(holdings, watchlist, sector_map, portfolio_total=None,
 
     rows = []
     row_idx = 0
+    held_orders = _plan_orders(set(ticker_data))   # planned orders on held names (latest PLAN)
+
+    def _plan_chip(t):
+        text = held_orders.get(t)
+        if not text:
+            return ''
+        return (f' <span class="tip" title="Planned in the latest PLAN: {text}" style="font-size:10px;font-weight:600;'
+                f'padding:1px 6px;border-radius:8px;background:#58a6ff22;color:#58a6ff;cursor:help;">plan</span>')
     for sector in sorted(sectors.keys(),
                          key=lambda s: -sum(d['value'] for d in sectors[s])):
         sector_total = sum(d['value'] for d in sectors[sector])
@@ -1051,7 +1093,7 @@ def _build_holdings_table(holdings, watchlist, sector_map, portfolio_total=None,
 
             rows.append(
                 f'<tr style="background:{bg};">'
-                f'<td style="padding-left:28px;font-weight:500;white-space:nowrap;">{d["ticker"]}{_etf_badge(d.get("is_etf"))}{_earn_badge(d.get("earnings_days"))}</td>'
+                f'<td style="padding-left:28px;font-weight:500;white-space:nowrap;">{d["ticker"]}{_etf_badge(d.get("is_etf"))}{_earn_badge(d.get("earnings_days"))}{_plan_chip(d["ticker"])}</td>'
                 f'<td style="color:#8b949e;font-size:12px;">{d["accounts"]}</td>'
                 f'<td style="text-align:right;color:#8b949e;">{shares}</td>'
                 f'<td style="text-align:right;white-space:nowrap;">{_price_cell(d.get("price"), d.get("spark"))}</td>'
@@ -1068,44 +1110,64 @@ def _build_holdings_table(holdings, watchlist, sector_map, portfolio_total=None,
                 f'<td style="font-size:12px;white-space:nowrap;">{hint}</td></tr>'
             )
 
+    def _watch_row(t, source, order, row_class=''):
+        """Row for an unheld watchlist name: same technicals as held rows; Target = entry + gap."""
+        d = wl_lookup[t]
+        try:
+            entry = float(str(d.get('entry_target')).replace('$', '').replace(',', ''))
+            gap = float(d.get('gap_pct'))
+        except (TypeError, ValueError):
+            entry = gap = None
+        tgt = (f'${entry:,.2f}<br><span style="color:#8b949e;font-size:11px;">{gap:+.1f}%</span>'
+               if entry and gap is not None else '—')
+        cls = f' class="{row_class}" style="display:none;"' if row_class else ''
+        return (
+            f'<tr{cls}>'
+            f'<td style="padding-left:28px;font-weight:500;white-space:nowrap;">{t}{_earn_badge(d.get("earnings_days"))}</td>'
+            f'<td style="color:#58a6ff;font-size:12px;">{source}</td>'
+            '<td></td>'
+            f'<td style="text-align:right;white-space:nowrap;">{_price_cell(d.get("price"), d.get("spark"))}</td>'
+            '<td style="text-align:right;color:#484f58;">—</td><td></td>'
+            f'<td style="text-align:center;">{_trend_chart(d.get("trend_px"), d.get("trend_sma"), d.get("trend_hi_idx"), d.get("above_sma200"))}</td>'
+            f'<td style="text-align:center;">{_pct_cell(d.get("pct_vs_sma200"))}</td>'
+            f'<td style="text-align:center;">{_pct_cell(d.get("pct_off_high"), good_above=-5.0)}</td>'
+            f'<td style="text-align:center;white-space:nowrap;">{_rsi_chart(d.get("rsi_spark"))}{_rsi_cell(d.get("rsi"))}{_rs_arrow(d.get("rs_1m"), d.get("rs_etf"))}</td>'
+            f'<td style="text-align:center;">{_pe_cell(d.get("fwd_pe"))}</td>'
+            f'<td style="text-align:center;">{_conv_badge(d.get("conviction"))}</td>'
+            f'<td style="text-align:center;font-size:12px;">{tgt}</td>'
+            '<td></td>'
+            f'<td style="font-size:12px;max-width:320px;white-space:normal;">{order}</td></tr>'
+        )
+
+    def _group_header(title, note, tip, color, toggle_class=''):
+        click = (f' onclick="document.querySelectorAll(\'.{toggle_class}\').forEach(r=>r.style.display='
+                 f'r.style.display===\'none\'?\'\':\'none\');this.querySelector(\'.arw\').textContent='
+                 f'this.querySelector(\'.arw\').textContent===\'▸\'?\'▾\':\'▸\';" '
+                 f'style="cursor:pointer;background:#161b22;font-weight:600;border-top:2px solid #30363d;"'
+                 if toggle_class else ' style="background:#161b22;font-weight:600;border-top:2px solid #30363d;"')
+        arrow = '<span class="arw">▸</span> ' if toggle_class else ''
+        return (f'<tr{click}><td colspan="15" style="border-left:4px solid {color};padding-left:12px;">'
+                f'{arrow}{title} <span style="color:#484f58;font-weight:400;font-size:12px;">{note}</span> '
+                f'<span class="tip" title="{tip}">&#9432;</span></td></tr>')
+
     # On Deck: unheld names we intend to trade (in the latest PLAN, or a /plan-stock within 14 days)
     on_deck = _on_deck_candidates(wl_lookup, set(ticker_data))
     if on_deck:
-        rows.append(
-            '<tr style="background:#161b22;font-weight:600;border-top:2px solid #30363d;">'
-            '<td colspan="15" style="border-left:4px solid #58a6ff;padding-left:12px;">On Deck '
-            f'<span style="color:#484f58;font-weight:400;font-size:12px;">({len(on_deck)}) · not held yet: '
-            'named in the latest plan or planned via /plan-stock in the last 14 days</span> '
-            '<span class="tip" title="Same technicals as held rows. Target column = entry target and gap; '
-            'Action column = the planned order from the latest PLAN (or the /plan-stock date)">&#9432;</span></td></tr>'
-        )
-        for t, source, order in on_deck:
-            d = wl_lookup[t]
-            gap = d.get('gap_pct')
-            try:
-                entry = float(str(d.get('entry_target')).replace('$', '').replace(',', ''))
-                gap = float(gap) if gap is not None else None
-            except (TypeError, ValueError):
-                entry = None
-            tgt = (f'${entry:,.2f}<br><span style="color:#8b949e;font-size:11px;">{gap:+.1f}%</span>'
-                   if entry and gap is not None else '—')
-            rows.append(
-                '<tr>'
-                f'<td style="padding-left:28px;font-weight:500;white-space:nowrap;">{t}{_earn_badge(d.get("earnings_days"))}</td>'
-                f'<td style="color:#58a6ff;font-size:12px;">{source}</td>'
-                '<td></td>'
-                f'<td style="text-align:right;white-space:nowrap;">{_price_cell(d.get("price"), d.get("spark"))}</td>'
-                '<td style="text-align:right;color:#484f58;">—</td><td></td>'
-                f'<td style="text-align:center;">{_trend_chart(d.get("trend_px"), d.get("trend_sma"), d.get("trend_hi_idx"), d.get("above_sma200"))}</td>'
-                f'<td style="text-align:center;">{_pct_cell(d.get("pct_vs_sma200"))}</td>'
-                f'<td style="text-align:center;">{_pct_cell(d.get("pct_off_high"), good_above=-5.0)}</td>'
-                f'<td style="text-align:center;white-space:nowrap;">{_rsi_chart(d.get("rsi_spark"))}{_rsi_cell(d.get("rsi"))}{_rs_arrow(d.get("rs_1m"), d.get("rs_etf"))}</td>'
-                f'<td style="text-align:center;">{_pe_cell(d.get("fwd_pe"))}</td>'
-                f'<td style="text-align:center;">{_conv_badge(d.get("conviction"))}</td>'
-                f'<td style="text-align:center;font-size:12px;">{tgt}</td>'
-                '<td></td>'
-                f'<td style="font-size:12px;max-width:320px;white-space:normal;">{order}</td></tr>'
-            )
+        rows.append(_group_header(
+            'On Deck', f'({len(on_deck)}) · not held yet: named in the latest plan or planned via /plan-stock in the last 14 days',
+            'Same technicals as held rows. Target column = entry target and gap; Action column = the planned order '
+            'from the latest PLAN (or the /plan-stock date)', '#58a6ff'))
+        rows.extend(_watch_row(t, src, order) for t, src, order in on_deck)
+
+    # Near entry (collapsed): unheld, conviction >= 7, at or below entry target + 10%, not already On Deck
+    near = _near_entry(wl_lookup, set(ticker_data) | {t for t, _, _ in on_deck})
+    if near:
+        rows.append(_group_header(
+            'Near Entry', f'({len(near)}) · conviction ≥ 7, price at or below entry target + 10% · click to expand',
+            'Candidates, not plans: run /plan-stock before trading any of them. Sorted by gap to entry target '
+            '(most below target first)', '#8b949e', toggle_class='near-entry-row'))
+        rows.extend(_watch_row(t, 'watchlist', '<span style="color:#8b949e;">no plan yet: /plan-stock first</span>',
+                               row_class='near-entry-row') for t in near)
 
     # Footer: what the portfolio would look like if every target were met
     actual_sum = target_sum = 0.0
