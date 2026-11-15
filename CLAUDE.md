@@ -53,7 +53,9 @@ All skills work independently — `/research-stock`, `/strategy-theta-gang`, `/p
 5. DISCUSS → /plan-stock     — Bounce ideas on which 2-3 stocks deserve full plans.
                                 User decides, Claude runs. Don't auto-run on everything.
 
-6. /portfolio-review          — Analysis: cross-account concentration, options intelligence,
+6. /portfolio-review          — Starts from scripts/execution-diff.py --md (last week's plan vs
+                                actual position changes, incl. off-plan trades). Then analysis:
+                                cross-account concentration, options intelligence,
                                 DCA review, sector exposure → REVIEW-YYYY-MM-DD.md
                                 Answers: "How is my portfolio doing?"
 
@@ -61,7 +63,8 @@ All skills work independently — `/research-stock`, `/strategy-theta-gang`, `/p
                                 DCA schedule, orders, position management, key dates, risk budget
                                 → PLAN-YYYY-MM-DD.md. Answers: "What should I do this week?"
                                 **POST-PLAN GATES (mandatory):**
-                                  → Run plan-lint.py and fix every ERROR (covers cash-check, DCA runway,
+                                  → Run plan-lint.py and fix every ERROR (covers account files via
+                                    account-check, cash-check, DCA runway,
                                     LEAP ≤60% of cash, account option rules, contract math + CC share
                                     coverage, put/call terminology, DCA ∝ conviction, /plan-stock coverage,
                                     expiry dates, full account names). Deliberate exceptions: "lint-ok".
@@ -221,7 +224,7 @@ Cloud sessions have **no portfolio data**: `portfolio/` never goes to GitHub. De
 | | Cloud | Local only |
 |---|---|---|
 | Skills | `/research-market`, `/research-sector`, `/research-stock` (position-free), `/research-stock-compare`, `/strategy-theta-gang leaders` | `/portfolio-review`, `/trading-plan`, `/plan-stock`, `/strategy-*` sizing, `/strategy-theta-gang pick\|roll`, `/watchlist` |
-| Scripts | `technicals`, `sentiment`, `macro`, `sector-momentum`, `sector-heatmap`, `crypto-cycle`, `bottleneck-scorecard`, `whale-tracker TICKER`, `watchlist.py --no-save` | `cash-check`, `correlation`, `dashboard`, `position-sizer`, `execution-tracker`, `whale-tracker --portfolio`, `watchlist.py` (saving) |
+| Scripts | `technicals`, `sentiment`, `macro`, `sector-momentum`, `sector-heatmap`, `crypto-cycle`, `bottleneck-scorecard`, `whale-tracker TICKER`, `watchlist.py --no-save` | `account-check`, `execution-diff`, `cash-check`, `plan-lint`, `correlation`, `dashboard`, `position-sizer`, `execution-tracker`, `whale-tracker --portfolio`, `watchlist.py` (saving) |
 | Output | Research files: thesis, conviction, entry levels | Position decisions, DCA amounts, orders, dashboards |
 
 **Rules in cloud sessions:**
@@ -241,6 +244,11 @@ Each file contains:
 - **Options positions** — active CCs, CSPs, LEAPs with expiry and status
 - **Flags** — concentration warnings, underwater positions, urgent items
 - **Review cadence** — when/how to review this account (durable)
+
+**Conventions (enforced by `scripts/account-check.py`):**
+- Frontmatter `cash` = the screenshot's cash **minus its "Pending activity"**, as a bare number. Pending buys already show in share counts, so gross cash double-counts them. Note the gross figure in the Positions text, never as an inline `# comment` (parsers read the raw value).
+- Position cells hold a clean ticker (`AMZN`) or option label (`AMZN $290C Dec 11 (short)`). Notes like splits go in the text, not the ticker cell.
+- Positions + cash must reconcile to `total_value`. After a clean check, `--snapshot` saves `portfolio/snapshots/<date>/`, the week-over-week history `execution-diff.py` needs.
 
 The user manages 5 accounts: HOLD (covered calls), ThetaGang (premium selling), Roth IRA (aggressive/all strategies), BrokerageLink (401k DCA engine), GoBig (LEAPs).
 
@@ -404,7 +412,11 @@ Classification logic:
 - **Remove:** no conviction + stale >60 days, or conviction <5, or >50% above target
 
 ### `scripts/dashboard.py`
-Unified HTML dashboard combining portfolio + watchlist data into one interactive view. 5 tabs: Portfolio Overview (donut charts, metrics, account bars), RSI vs P/E Scatter, Earnings Calendar, Holdings (cross-account table by sector), Trading Plan (rendered from latest `portfolio/plans/PLAN-*.md`).
+Unified HTML dashboard combining portfolio + watchlist data into one interactive view. 5 tabs: Portfolio Overview (donut charts, metrics, account bars), Holdings, Opportunity Map (RSI vs sector-relative valuation), Earnings Calendar, Trading Plan (rendered from latest `portfolio/plans/PLAN-*.md`, "At a Glance" first).
+
+**Holdings tab:** cross-account table by sector with technicals (1Y trend, vs 200D, off high, RSI, fwd P/E), conviction, target weight, status and action. Held rows named in the latest plan carry a **plan** chip (hover = the planned order; One-Time Orders/Conditionals win over At a Glance and DCA rows). Below the held sectors:
+- **On Deck:** unheld names in the latest plan's order sections, or with a `/plan-stock` in the last 14 days. Same technicals, plus entry target, gap and the planned order.
+- **Near Entry** (collapsed, click to expand): unheld names with conviction ≥ 7 at or below entry target + 10%, sorted by gap, marked "no plan yet".
 
 ```bash
 .venv/bin/python3 scripts/dashboard.py              # auto-runs watchlist.py, opens browser
@@ -412,7 +424,7 @@ Unified HTML dashboard combining portfolio + watchlist data into one interactive
 .venv/bin/python3 scripts/watchlist.py --json | .venv/bin/python3 scripts/dashboard.py  # piped
 ```
 
-Output: `research/stocks/0-watchlist-dashboard-YYYY-MM-DD.html`. Automatically called by `watchlist.py` when saving.
+Output: `research/stocks/0-watchlist-dashboard-YYYY-MM-DD.html`. Automatically called by `watchlist.py` when saving. From agent/tool shells, prefer the piped form: stdin is read only if data arrives within 5s, otherwise it runs `watchlist.py` itself (180s timeout).
 
 ### `scripts/screener.py`
 Composite stock screener that scores and ranks all watchlist stocks (0-100) by: RSI positioning (20%), PEG valuation (20%), gap-to-target (20%), conviction (20%), sector momentum (10%), and research staleness (10%). Replaces manual triage scanning.
@@ -501,6 +513,8 @@ Scores last week's plan against what actually changed. Compares the latest snaps
 .venv/bin/python3 scripts/execution-diff.py --md     # markdown table for the review
 .venv/bin/python3 scripts/execution-diff.py --json
 ```
+
+Overlaps the older `scripts/execution-tracker.py` (plan vs current state, carry-forwards); merging the two is planned (NOTES.md TODO #12).
 
 Verdicts: ✅ done · ⚠️ partial · ⏳ open (GTC/keep/trigger-based, not filled) · ❌ not done · ❌ still buying (a cancel/pause the position contradicts) · ❔ manual. Also lists **off-plan** changes (no order or DCA line explains them) and the execution rate. Conditionals appear only when their ticker moved. `/portfolio-review` Step 0b starts from this. Exit 2 when there's no prior snapshot yet.
 

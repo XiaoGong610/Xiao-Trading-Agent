@@ -110,6 +110,7 @@ In a taxable account, **buying a put (or a collar) on shares held ≤ 1 year res
 | Buy & Hold (AMZN, GOOG) | **Either** — brokerage is fine if holding >1 year | Long-term cap gains rate is manageable (15-20%). |
 | Speculative / high-turnover | **Roth IRA** | Frequent trading = all short-term gains. Tax-free in Roth avoids the penalty. |
 | Positions you might tax-loss harvest | **Brokerage** | You need it in a taxable account to harvest the loss. |
+| Broad index core (S&P 500 / total-market ETF), long hold | **Brokerage** | Already tax-efficient (low turnover, qualified dividends, long-term gains) and harvestable, so it wastes little in a taxable account. Save tax-advantaged space for high-turnover and income strategies. Hold one fund per index in one place; use a similar but not identical fund elsewhere (e.g. total market vs S&P 500) to keep loss harvests clean of wash sales. |
 
 ## Multi-Account Concentration & Tax Implications
 

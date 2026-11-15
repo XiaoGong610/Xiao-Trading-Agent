@@ -6,6 +6,14 @@ A living document for brainstorming, discussions, decisions, and TODOs.
 
 ## Decisions Made
 
+### Process & Framework Updates (2026-11-14)
+- **Asset location for an index core:** a long-term S&P 500 ETF DCA belongs in the taxable account, not the 401k: it's already tax-efficient, and the 401k's shelter is worth more on the account whose job is active rotation (and whose stated goal is to *beat* SPY/QQQ). Added to `tax-rules.md` "Where to Hold What".
+- **Index premium-selling:** an S&P 500 ETF is a DCA core, not a theta vehicle. Covered calls cap exactly the upside it's held for; at normal volatility CC/CSP scores fail (IV below realized vol). Revisit index CSPs only when IV > RV with VIX ≥ ~25, and then on SPY/XSP (deeper options market).
+- **Account-file conventions now enforced:** cash = screenshot cash minus pending (bare number); clean ticker labels; positions + cash reconcile to the total. `scripts/account-check.py` gates step 1 and plan-lint; `--snapshot` keeps weekly history.
+- **Execution scoring from snapshots:** `scripts/execution-diff.py` compares last week's snapshot with the current files, so it also catches off-plan trades and cancels/pauses that didn't happen ("still buying").
+- **Dashboard Holdings shows planned trades:** plan chips on held rows, On Deck and Near Entry groups for unheld names.
+- **Build process:** agree a holistic design plan (inventory existing scripts first) and build tests alongside code before adding more tooling. See TODO #12.
+
 ### Process & Framework Updates (2026-10-24)
 - **Public repo hard rule:** no personal info/data in any tracked file (now in CLAUDE.md). Examples in `knowledge/` are hypothetical.
 - **Influencer check = every account, every ticker.** The Focus column isn't a filter (a tracked account had covered a non-focus stock for months). X is read via Claude in Chrome; no X API/MCP is set up.
