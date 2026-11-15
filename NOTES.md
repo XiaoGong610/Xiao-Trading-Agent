@@ -342,3 +342,30 @@ Unified logic for when to take profit, trim, or exit across all position types. 
 **Key principle:** Different instruments have different exit logic. Don't apply theta-gang rules to directional bets.
 
 **Deliverable:** `knowledge/strategies/when-to-harvest.md` ✅ — 6 position-type harvest matrices (sold options, LEAPs, DCA shares, lump sum shares, leveraged ETFs, concentration management) + cross-cutting rules (earnings, sector transitions, tax priority). Includes IGV LEAP case study. Integrated into `/portfolio-review` Step 3 and `/trading-plan` Step 5.
+
+### 12. Harness Layer + Engineering Quality 🔄 IN PROGRESS (started 2026-11-14)
+Goal: deterministic checks around the LLM workflow (validate inputs, score execution, track session state) plus the engineering practices that keep those checks trustworthy. The model keeps research, conviction and planning; the user keeps execution; the harness verifies inputs and outputs in between. It never places trades.
+
+**Why (2026-11-14 session):** in one weekly run, 8 bugs slipped through, and only one (real share counts in a code comment) was caught automatically, by the privacy hook. Others: gross cash written to account files (dashboard $58K vs actual $50K), an inline YAML comment crashing cash-check, a ticker label ("XYZ (split pending)") breaking cross-account matching, a dashboard tag cross-matching tickers, three execution-diff logic bugs, and a dashboard stdin read that hung 25+ min.
+
+**Built so far (2026-11-14):**
+- [x] `scripts/account-check.py`: account-file validator (bare-number frontmatter, freshness, clean labels, no duplicates, cash net of pending, positions + cash reconcile to total). First check in plan-lint (`accounts`). `--snapshot` saves `portfolio/snapshots/<date>/`
+- [x] `scripts/execution-diff.py`: snapshot-to-snapshot diff scored against the plan (done / partial / open / not done / still buying / off-plan). `/portfolio-review` Step 0b starts from it. First real run: next weekly session
+- [x] `dashboard.py`: On Deck + Near Entry groups and plan tags in Holdings; non-blocking stdin read (the hang fix)
+
+**Next step: write a holistic design plan BEFORE building more.** Agree it with the user, then build from it. It should cover:
+1. **Inventory and consolidation.** Map every existing script and what it overlaps with. Known overlap: `execution-tracker.py` (Sep 2026, plan vs current state, carry-forwards) vs `execution-diff.py` (snapshot vs snapshot, sees off-plan changes): merge into one. Also check `position-sizer.py`, `screener.py`, `cash-check.py` / `plan-lint.py` boundaries, and which scripts CLAUDE.md doesn't document.
+2. **Architecture.** One shared parsing layer for account files, plans and research frontmatter (today each script has its own parser, which is where label/comment/cash bugs come from). One data-fetch layer with timeouts + a shared cache (watchlist, dashboard, lint, option-scores fetch the same tickers repeatedly).
+3. **Session runner** (`scripts/weekly.py`): state file per session (steps done, stale sectors/stocks by cadence, gates passed/failed), resumable after a usage limit; runs the gates in order (account-check → execution-diff → plan-lint → privacy).
+4. **Quality mechanisms:**
+   - [ ] pytest in `requirements.txt`; `tests/` with fixtures of hypothetical round numbers and fake tickers (public repo); every bug above becomes a regression test
+   - [ ] Tests in the pre-commit hook next to privacy-check
+   - [ ] GitHub Actions CI: tests + `privacy-check --all` on push
+   - [ ] `/code-review` on every change to a gate script before merging
+   - [ ] Half-page spec (inputs, outputs, failure modes, acceptance tests) for anything bigger than a fix
+5. **Agent-output checks.** Research-file validator: frontmatter schema, date separators, newest-first order, no position claims stated as facts (a sector agent claimed a watch level had "filled" from old notes).
+6. **Decision quality (later).** Score past plans against outcomes: did higher-conviction names outperform? Calibrate conviction over time.
+
+**Housekeeping:**
+- [ ] `.venv/bin/pip` launcher points at an old path (`xiao-trading-strategies/.venv`); recreate it or use `python3 -m pip`
+- [ ] `plan-lint`: `lint-ok` isn't honored by the runway check (other checks honor it); decide whether it should be
