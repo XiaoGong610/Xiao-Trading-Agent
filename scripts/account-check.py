@@ -22,6 +22,8 @@ Checks (per account file):
 Usage:
     .venv/bin/python3 scripts/account-check.py            # terminal report
     .venv/bin/python3 scripts/account-check.py --json
+    .venv/bin/python3 scripts/account-check.py --snapshot   # if clean, copy files to
+                                                            # portfolio/snapshots/<last_updated>/
 
 Importable: run_checks() -> list of (level, account, check, message).
 Exit codes: 0 no errors (warnings allowed), 1 at least one ERROR.
@@ -190,9 +192,24 @@ def run_checks(accounts_dir: Path = ACCOUNTS_DIR, today: date = None):
 def main():
     ap = argparse.ArgumentParser(description="Validate portfolio/accounts/*.md")
     ap.add_argument("--json", action="store_true")
+    ap.add_argument("--snapshot", action="store_true",
+                    help="if there are no errors, copy the files to portfolio/snapshots/<last_updated>/ "
+                         "(the week-over-week history the execution diff needs)")
     args = ap.parse_args()
     findings, names = run_checks()
     errors = [f for f in findings if f[0] == "ERROR"]
+    if args.snapshot and not errors:
+        import shutil
+        dates = {parse_frontmatter(f.read_text(encoding="utf-8")).get("last_updated")
+                 for f in ACCOUNTS_DIR.glob("*.md")}
+        snap_date = max(d for d in dates if d)
+        dest = ROOT / "portfolio" / "snapshots" / snap_date
+        dest.mkdir(parents=True, exist_ok=True)
+        for f in ACCOUNTS_DIR.glob("*.md"):
+            shutil.copy2(f, dest / f.name)
+        print(f"snapshot: {len(names)} files → {dest.relative_to(ROOT)}", file=sys.stderr)
+    elif args.snapshot:
+        print("snapshot skipped: fix the errors first", file=sys.stderr)
     if args.json:
         print(json.dumps({"accounts": names, "errors": len(errors),
                           "warnings": len(findings) - len(errors),

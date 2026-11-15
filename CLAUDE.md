@@ -24,8 +24,8 @@ All skills work independently — `/research-stock`, `/strategy-theta-gang`, `/p
 1. UPDATE ACCOUNTS    → User shares brokerage screenshots (or starts fresh).
                         Refresh portfolio/accounts/*.md (frontmatter cash = screenshot
                         cash minus pending activity, bare number).
-                        GATE: .venv/bin/python3 scripts/account-check.py → fix every ERROR
-                        before anything reads the files.
+                        GATE: .venv/bin/python3 scripts/account-check.py --snapshot → fix
+                        every ERROR; a clean run saves portfolio/snapshots/<date>/ (history).
 
 2. ADD NEW PICKS      → User mentions new stocks (friend tips, news, ideas).
                         Add as candidates: .venv/bin/python3 scripts/watchlist.py --add TICKER
