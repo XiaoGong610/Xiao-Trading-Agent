@@ -10,6 +10,7 @@ Parse the first word as the subcommand:
 - **`pick TICKER STRATEGY`** — Compare strike/expiry combos (e.g., "pick AAPL CSP", "pick TSLA CC")
 - **`roll TICKER STRIKE EXPIRY STRATEGY`** — Analyze whether to roll a position (e.g., "roll AAPL 170P 2026-05-16 CSP")
 - **`leaders TICKER`** — Check what top thetagang.com traders are doing (e.g., "leaders AAPL")
+- **`compare T1 T2 … [CC]`** — Which underlying is the better covered-call name, now and historically (e.g., "compare GOOG AMZN TSLA QQQ")
 
 ---
 
@@ -90,6 +91,29 @@ strategies: [CSP, CC]
 If the file already exists and has frontmatter, do not modify the frontmatter — only prepend the new analysis entry below it.
 
 **Update watchlist:** Run `.venv/bin/python3 scripts/watchlist.py` to regenerate `0-WATCHLIST.md`.
+
+---
+
+# If subcommand is `compare`
+
+Compare covered-call candidates across underlyings. Arguments after `compare`: two or more tickers (an optional trailing `CC` is ignored; CSP comparison isn't supported yet). This is options mechanics plus portfolio fit; conviction comes from existing research, not from this skill.
+
+**Step 1: live setup + portfolio fit**
+```bash
+.venv/bin/python3 scripts/cc-compare.py T1 T2 T3 --basis T1=COST   # --basis per held ticker = gate 4
+```
+Best contract per name (CC Sharpe score and gates from `option-scores.py`), IV vs realized vol, and from the local account files: shares held, % of portfolio vs the conviction band, **uncovered 100-share lots in accounts that allow covered calls**, and the cost of a new lot. Fit verdicts: USE EXISTING · WAIT (gates fail today) · BUY FIRST (needs `/plan-stock`) · OVERWEIGHT (don't add). In the cloud, add `--no-portfolio`.
+
+**Step 2: history (how buy-write behaved on each name)**
+```bash
+.venv/bin/python3 scripts/cc-backtest.py T1 T2 T3              # 0.20-delta, 30-trading-day cycles since 2016
+.venv/bin/python3 scripts/cc-backtest.py T1 --delta 0.15 --dte 21   # sensitivity
+```
+Buy-write vs buy-hold CAGR and drawdown, premium yield, % of cycles called, average cost when called, worst cycle. Model prices (realized vol × VRP); no earnings avoidance. Treat it as a comparison between names and settings, not an income forecast.
+
+**Step 3: verdict.** Rank the names for (a) **income now from shares already owned** (USE EXISTING first), and (b) **a new covered-call underlying** (BUY FIRST names, requiring `/plan-stock`). Apply `knowledge/strategies/when-to-cc.md`: sell into strength, ladder strikes for ≥ 2 contracts, strike ≥ cost basis, avoid earnings in the window. Flag OVERWEIGHT names, names where history shows buy-write *worsened* drawdowns (big call losses in rallies shrink the base before a crash), and names whose capital per lot is out of proportion to the account.
+
+Output: the Step 1 table, the Step 2 table, then a short ranked verdict with the concrete contract (strike, expiry, premium) for the top USE EXISTING name.
 
 ---
 

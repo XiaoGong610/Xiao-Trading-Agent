@@ -177,7 +177,7 @@ Research → Strategy → Execute → Manage
 | **strategy** | `/strategy-buy-and-hold` | Buy & Hold entry planning |
 | | `/strategy-dca` | DCA schedule and sizing |
 | | `/strategy-leaps` | LEAP Calls analysis |
-| | `/strategy-theta-gang` | Theta gang: `analyze`, `pick`, `roll`, `leaders` |
+| | `/strategy-theta-gang` | Theta gang: `analyze`, `pick`, `roll`, `leaders`, `compare` (covered-call names side by side) |
 | **watchlist** | `/watchlist` | Triage, add stocks, auto-refresh top priorities |
 | **util** | `/util-chart` | Interactive price chart with strategy overlays |
 
@@ -544,6 +544,27 @@ Data sources (all free, no API keys): SEC EDGAR (Form 4 insider filings via EFTS
 ```
 
 Signals: cluster buying (3+ insiders = STRONG), large purchases (>$500K), C-suite buying, unusual options volume (V/OI >3x), put/call skew. Results cached for 1 hour. Graceful degradation if a data source fails.
+
+### `scripts/cc-compare.py`
+Which underlying is the better covered-call name right now. Scans live calls per ticker (20–50 DTE, 0.15–0.30 delta), keeps the best contract by CC Sharpe Score (same gates as `option-scores.py`), and adds portfolio fit from the account files: shares held, weight vs the conviction band, **uncovered lots in accounts that allow covered calls**, and the cost of a new lot. Verdicts: USE EXISTING / WAIT / BUY FIRST / OVERWEIGHT. Used by `/strategy-theta-gang compare`.
+
+```bash
+.venv/bin/python3 scripts/cc-compare.py GOOG AMZN TSLA QQQ --basis AMZN=200   # --basis = gate 4 cost basis
+.venv/bin/python3 scripts/cc-compare.py GOOG AMZN --json
+.venv/bin/python3 scripts/cc-compare.py GOOG --no-portfolio                  # cloud
+```
+
+### `scripts/cc-backtest.py`
+Buy-write vs buy-hold per underlying over history: sells a DELTA call every DTE trading days (Black-Scholes, 30-day realized vol × VRP), settles at intrinsic. Reports CAGR and drawdown for both, premium yield, % called, average cost when called, worst cycle. Model prices, no earnings avoidance: compare names and settings, don't forecast income. `--mode structures` runs the ladder comparison from `cc-ladder-backtest.py` for any tickers.
+
+```bash
+.venv/bin/python3 scripts/cc-backtest.py GOOG AMZN TSLA QQQ                 # 0.20-delta, 30-day cycles since 2016
+.venv/bin/python3 scripts/cc-backtest.py TSLA --delta 0.15 --dte 21 --start 2019-01-01
+.venv/bin/python3 scripts/cc-backtest.py TSLA --mode structures
+```
+
+### Tests
+`tests/` (pytest; synthetic data and fake tickers only, since this repo is public). Covers `cc-backtest.py` (delta/strike round trip; buy-write vs hold in flat, rally and crash paths) and `cc-compare.py` (uncovered-lot and fit math). Run: `.venv/bin/python3 -m pytest -q`. Extending coverage to the other gate scripts, a pre-commit hook and CI is NOTES.md TODO #12.
 
 ### `scripts/cc-ladder-backtest.py`
 Historical backtest comparing covered-call structures on volatile names: 4× uniform strike vs strike ladder vs strike + timing ladder. Results feed the Ladder Rule in `knowledge/strategies/when-to-cc.md`. Uses yfinance + scipy.
