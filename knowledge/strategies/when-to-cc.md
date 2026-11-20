@@ -211,6 +211,20 @@ Treat the direction as reliable and the exact numbers as rough.
 | Stock blows through strike | Close for a loss OR let shares get called away if you're happy with the exit price. |
 | Near expiration, stock well below strike | Let expire worthless or close for pennies. |
 
+## Building a Covered-Call Position (Lifecycle)
+
+A covered-call stock is a long-term holding first and an income source second. Three stages, checked with `scripts/cc-check.py TICKER` (it prints the stage):
+
+| Stage | Condition | Action |
+|-------|-----------|--------|
+| **ACCUMULATE** | Conviction ≥ 6, fewer than 100 shares in an account that allows calls, not over its conviction band | Build to whole lots with a scaled entry (`/plan-stock`): 40/30/30 at support levels. Size: the conviction band caps the position (e.g., conviction 7 → 5% max); the stock only qualifies if 1 lot fits inside the band. Two lots let you ladder strikes |
+| **HOLD, WAIT** | Lot(s) held, but the CC Sharpe gates fail (often IV < realized vol right after a selloff) | Hold the shares. No calls yet: selling after a drop caps the rebound you bought for |
+| **SELL CALLS** | Lot(s) held and the gates pass, ideally on an up day | 0.15–0.25 delta, 30–45 DTE, strike ≥ cost basis, no earnings in the window; ladder strikes with ≥ 2 lots; harvest at ~50% |
+
+Edge cases: **over band** (already above the conviction cap) → sell calls on what you hold, don't add. **Low conviction (< 6)** → don't build a position for income; calls on existing shares only. Shares in an account that can't trade options (e.g., a 401k) don't count toward a lot; consider moving that exposure into an options-capable account.
+
+**Which names suit it** (check Q3 of `cc-check.py`, buy-write vs buy-hold since 2016): steady compounders with rich-but-not-extreme volatility tend to *gain* from covered calls (higher return and much smaller drawdowns). Explosive, momentum-driven names tend to *lose*: called-away losses in big rallies outweigh the premium, and the smaller base can make later drawdowns worse.
+
 ## Position Sizing
 
 - **Max 5% of portfolio notional per CC position** (shares covered × strike × 100).

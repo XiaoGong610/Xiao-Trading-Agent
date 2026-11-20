@@ -177,7 +177,7 @@ Research → Strategy → Execute → Manage
 | **strategy** | `/strategy-buy-and-hold` | Buy & Hold entry planning |
 | | `/strategy-dca` | DCA schedule and sizing |
 | | `/strategy-leaps` | LEAP Calls analysis |
-| | `/strategy-theta-gang` | Theta gang: `analyze`, `pick`, `roll`, `leaders`, `compare` (covered-call names side by side) |
+| | `/strategy-theta-gang` | Theta gang: `analyze`, `pick`, `roll`, `leaders`, `cc-check` (is one stock a hold + covered-call candidate) and `compare` (several side by side) |
 | **watchlist** | `/watchlist` | Triage, add stocks, auto-refresh top priorities |
 | **util** | `/util-chart` | Interactive price chart with strategy overlays |
 
@@ -545,13 +545,20 @@ Data sources (all free, no API keys): SEC EDGAR (Form 4 insider filings via EFTS
 
 Signals: cluster buying (3+ insiders = STRONG), large purchases (>$500K), C-suite buying, unusual options volume (V/OI >3x), put/call skew. Results cached for 1 hour. Graceful degradation if a data source fails.
 
-### `scripts/cc-compare.py`
-Which underlying is the better covered-call name right now. Scans live calls per ticker (20–50 DTE, 0.15–0.30 delta), keeps the best contract by CC Sharpe Score (same gates as `option-scores.py`), and adds portfolio fit from the account files: shares held, weight vs the conviction band, **uncovered lots in accounts that allow covered calls**, and the cost of a new lot. Verdicts: USE EXISTING / WAIT / BUY FIRST / OVERWEIGHT. Used by `/strategy-theta-gang compare`.
+### `scripts/cc-check.py`
+Covered-call candidate check for **one stock** (several tickers = the same check on each, plus a comparison table). Answers four questions and prints a lifecycle **stage**:
+1. **Conviction:** research conviction, thesis, freshness (≥ 7 YES · 6 OK · 5 WEAK · < 5 NO).
+2. **Volatility:** live IV vs realized vol, IV Rank, best 20–50 DTE / 0.15–0.30-delta call scored with the CC Sharpe gates (premium ≥ 15%/yr RICH, 10–15 GOOD, 6–10 THIN).
+3. **Simulation:** buy-write vs buy-hold since 2016 via `cc-backtest.py` (CAGR uplift, premium/yr, % of 1-year windows that beat holding, uplift in rallies vs down years, drawdown).
+4. **Sizing:** conviction band × portfolio value → max shares and whole lots; shares to buy to start (2 lots allow a strike ladder).
+
+Stages: **ACCUMULATE → HOLD, WAIT → SELL CALLS** (plus OVER BAND / CALLS ON EXISTING ONLY / NOT A CANDIDATE). Lifecycle rules: `knowledge/strategies/when-to-cc.md` → "Building a Covered-Call Position". Used by `/strategy-theta-gang cc-check` and `compare`.
 
 ```bash
-.venv/bin/python3 scripts/cc-compare.py GOOG AMZN TSLA QQQ --basis AMZN=200   # --basis = gate 4 cost basis
-.venv/bin/python3 scripts/cc-compare.py GOOG AMZN --json
-.venv/bin/python3 scripts/cc-compare.py GOOG --no-portfolio                  # cloud
+.venv/bin/python3 scripts/cc-check.py GOOG                          # one stock
+.venv/bin/python3 scripts/cc-check.py GOOG AMZN TSLA QQQ            # each + comparison
+.venv/bin/python3 scripts/cc-check.py GOOG --portfolio-value 700000 --no-portfolio   # cloud
+.venv/bin/python3 scripts/cc-check.py GOOG --start 2019-01-01 --sim-delta 0.15 --json
 ```
 
 ### `scripts/cc-backtest.py`
@@ -564,7 +571,7 @@ Buy-write vs buy-hold per underlying over history: sells a DELTA call every DTE 
 ```
 
 ### Tests
-`tests/` (pytest; synthetic data and fake tickers only, since this repo is public). Covers `cc-backtest.py` (delta/strike round trip; buy-write vs hold in flat, rally and crash paths) and `cc-compare.py` (uncovered-lot and fit math). Run: `.venv/bin/python3 -m pytest -q`. Extending coverage to the other gate scripts, a pre-commit hook and CI is NOTES.md TODO #12.
+`tests/` (pytest; synthetic data and fake tickers only, since this repo is public). Covers `cc-backtest.py` (delta/strike round trip; buy-write vs hold in flat, rally and crash paths) and `cc-check.py` (fit, sizing, verdicts, lifecycle stage). Run: `.venv/bin/python3 -m pytest -q`. Extending coverage to the other gate scripts, a pre-commit hook and CI is NOTES.md TODO #12.
 
 ### `scripts/cc-ladder-backtest.py`
 Historical backtest comparing covered-call structures on volatile names: 4× uniform strike vs strike ladder vs strike + timing ladder. Results feed the Ladder Rule in `knowledge/strategies/when-to-cc.md`. Uses yfinance + scipy.

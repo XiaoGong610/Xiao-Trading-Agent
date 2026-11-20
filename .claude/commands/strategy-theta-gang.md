@@ -10,7 +10,8 @@ Parse the first word as the subcommand:
 - **`pick TICKER STRATEGY`** — Compare strike/expiry combos (e.g., "pick AAPL CSP", "pick TSLA CC")
 - **`roll TICKER STRIKE EXPIRY STRATEGY`** — Analyze whether to roll a position (e.g., "roll AAPL 170P 2026-05-16 CSP")
 - **`leaders TICKER`** — Check what top thetagang.com traders are doing (e.g., "leaders AAPL")
-- **`compare T1 T2 … [CC]`** — Which underlying is the better covered-call name, now and historically (e.g., "compare GOOG AMZN TSLA QQQ")
+- **`cc-check TICKER`** — Is this stock a good hold + covered-call candidate, and how many shares to start? (e.g., "cc-check GOOG")
+- **`compare T1 T2 …`** — The same check on several stocks, plus a side-by-side table (e.g., "compare GOOG AMZN TSLA QQQ")
 
 ---
 
@@ -94,26 +95,29 @@ If the file already exists and has frontmatter, do not modify the frontmatter �
 
 ---
 
-# If subcommand is `compare`
+# If subcommand is `cc-check` or `compare`
 
-Compare covered-call candidates across underlyings. Arguments after `compare`: two or more tickers (an optional trailing `CC` is ignored; CSP comparison isn't supported yet). This is options mechanics plus portfolio fit; conviction comes from existing research, not from this skill.
+Is a stock a good **hold long-term + sell covered calls** candidate, and how many shares does it take to start? `cc-check TICKER` checks one stock; `compare T1 T2 …` runs the same single-stock check on each and adds a comparison table. Options mechanics plus sizing; conviction comes from existing research.
 
-**Step 1: live setup + portfolio fit**
+**Step 1: run the check**
 ```bash
-.venv/bin/python3 scripts/cc-compare.py T1 T2 T3 --basis T1=COST   # --basis per held ticker = gate 4
+.venv/bin/python3 scripts/cc-check.py TICKER            # or T1 T2 T3 for compare
 ```
-Best contract per name (CC Sharpe score and gates from `option-scores.py`), IV vs realized vol, and from the local account files: shares held, % of portfolio vs the conviction band, **uncovered 100-share lots in accounts that allow covered calls**, and the cost of a new lot. Fit verdicts: USE EXISTING · WAIT (gates fail today) · BUY FIRST (needs `/plan-stock`) · OVERWEIGHT (don't add). In the cloud, add `--no-portfolio`.
+It answers four questions and prints a lifecycle stage:
+1. **Conviction** (research conviction, thesis, freshness). Stale or missing → run `/research-stock` first.
+2. **Volatility** (IV vs realized vol, IV Rank, best call's premium/yr and CC Sharpe verdict).
+3. **Simulation** (buy-write vs buy-hold since 2016: CAGR uplift, % of 1-year windows that beat holding, rallies vs down years, drawdown).
+4. **Sizing** (conviction band → max shares and whole lots; shares to buy to reach a lot).
 
-**Step 2: history (how buy-write behaved on each name)**
-```bash
-.venv/bin/python3 scripts/cc-backtest.py T1 T2 T3              # 0.20-delta, 30-trading-day cycles since 2016
-.venv/bin/python3 scripts/cc-backtest.py T1 --delta 0.15 --dte 21   # sensitivity
-```
-Buy-write vs buy-hold CAGR and drawdown, premium yield, % of cycles called, average cost when called, worst cycle. Model prices (realized vol × VRP); no earnings avoidance. Treat it as a comparison between names and settings, not an income forecast.
+**Stage:** ACCUMULATE → HOLD, WAIT → SELL CALLS, or OVER BAND / CALLS ON EXISTING ONLY / NOT A CANDIDATE. Rules in `knowledge/strategies/when-to-cc.md` → "Building a Covered-Call Position".
 
-**Step 3: verdict.** Rank the names for (a) **income now from shares already owned** (USE EXISTING first), and (b) **a new covered-call underlying** (BUY FIRST names, requiring `/plan-stock`). Apply `knowledge/strategies/when-to-cc.md`: sell into strength, ladder strikes for ≥ 2 contracts, strike ≥ cost basis, avoid earnings in the window. Flag OVERWEIGHT names, names where history shows buy-write *worsened* drawdowns (big call losses in rallies shrink the base before a crash), and names whose capital per lot is out of proportion to the account.
+**Step 2: verdict per stock**
+- **ACCUMULATE:** the trading plan becomes "build to N lots → hold → sell calls". A purchase over $2K needs `/plan-stock` (scaled 40/30/30 entry). State the call-start conditions (close above the 20-day average, IV ≥ RV, up day) and the strike floor.
+- **SELL CALLS:** give the concrete contract (strike, expiry, premium), sold into strength, laddered if ≥ 2 lots, strike ≥ cost basis, no earnings in the window.
+- **HOLD, WAIT:** say which gate fails and what would flip it.
+- Flag names where the simulation says HURTS (momentum names give up rallies) and names whose single lot is too big for their conviction band.
 
-Output: the Step 1 table, the Step 2 table, then a short ranked verdict with the concrete contract (strike, expiry, premium) for the top USE EXISTING name.
+For a deeper historical look: `.venv/bin/python3 scripts/cc-backtest.py TICKER --delta 0.15 --dte 21` (sensitivity) or `--mode structures` (ladder vs uniform strikes).
 
 ---
 

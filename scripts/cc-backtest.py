@@ -116,8 +116,27 @@ def simulate_buywrite(prices, vols=None, dte=30, delta=0.20, vrp=1.15, start=30)
         "avg_cost_when_called_pct": round(float(np.mean([c["payoff"] / c["S"] for c in called]) * 100), 1) if called else 0.0,
         "worst_cycle_cost_pct": round(max((c["payoff"] - c["prem"]) / c["S"] for c in cycles) * 100, 1) if n else 0.0,
         "cycle_win_pct": round(sum(1 for c in cycles if c["prem"] >= c["payoff"]) / n * 100, 1) if n else 0.0,
+        "cagr_uplift_pct": round(cagr(eq_bw[-1]) - cagr(eq_bh[-1]), 1),
+        **rolling_1y(eq_bw, eq_bh, dte),
         "_equity_bw": eq_bw, "_equity_bh": eq_bh,
     }
+
+
+def rolling_1y(eq_bw, eq_bh, dte):
+    """Rolling ~1-year windows (cycle ends): how often buy-write beat holding, and by how much."""
+    k = max(1, round(252 / dte))
+    if len(eq_bw) <= k:
+        return {"windows_1y": 0, "beat_hold_1y_pct": None, "median_1y_uplift_pts": None,
+                "uplift_1y_up_markets_pts": None, "uplift_1y_down_markets_pts": None}
+    bw = eq_bw[k:] / eq_bw[:-k] - 1
+    bh = eq_bh[k:] / eq_bh[:-k] - 1
+    diff = (bw - bh) * 100
+    up, down = diff[bh > 0.15], diff[bh < 0]
+    return {"windows_1y": int(len(diff)),
+            "beat_hold_1y_pct": round(float((diff > 0).mean() * 100), 1),
+            "median_1y_uplift_pts": round(float(np.median(diff)), 1),
+            "uplift_1y_up_markets_pts": round(float(np.median(up)), 1) if len(up) else None,
+            "uplift_1y_down_markets_pts": round(float(np.median(down)), 1) if len(down) else None}
 
 
 def fetch(ticker, start):

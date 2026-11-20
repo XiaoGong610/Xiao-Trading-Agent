@@ -375,8 +375,8 @@ Goal: deterministic checks around the LLM workflow (validate inputs, score execu
 6. **Decision quality (later).** Score past plans against outcomes: did higher-conviction names outperform? Calibrate conviction over time.
 
 **Built 2026-11-20 (tests-first start):**
-- [x] `scripts/cc-compare.py` + `scripts/cc-backtest.py`, wired into `/strategy-theta-gang compare`
-- [x] `tests/` with pytest (8 tests, synthetic data/fake tickers); `pytest` added to `requirements.txt`. Still TODO: tests for account-check / execution-diff / plan-lint, pre-commit hook, CI
+- [x] `scripts/cc-check.py` (single-stock: conviction, volatility, simulation, sizing, lifecycle stage) + `scripts/cc-backtest.py`, wired into `/strategy-theta-gang cc-check` and `compare`
+- [x] `tests/` with pytest (12 tests, synthetic data/fake tickers); `pytest` added to `requirements.txt`. Still TODO: tests for account-check / execution-diff / plan-lint, pre-commit hook, CI
 
 **Housekeeping:**
 - [ ] `.venv/bin/pip` launcher points at an old path (`xiao-trading-strategies/.venv`); recreate it or use `python3 -m pip`

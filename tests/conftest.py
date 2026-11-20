@@ -21,4 +21,4 @@ def ccb():
 
 @pytest.fixture(scope="session")
 def ccc():
-    return load_script("cc-compare.py")
+    return load_script("cc-check.py")
