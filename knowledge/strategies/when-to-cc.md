@@ -199,6 +199,23 @@ Treat the direction as reliable and the exact numbers as rough.
 - **Strength triggers:** act after 1–2 up days into resistance. Don't wait for a large multi-day rally.
 - **Early close (50–65%) vs. hold to expiry:** the backtest favors holding for return. Our harvest rule trades some return for lower gap and assignment risk, so keep it for high-beta names and around events, and consider holding low-beta CCs to expiry.
 
+## Strike, Timing & Simulation Evidence (external research, Nov 2026)
+
+| Question | Finding | Source |
+|---|---|---|
+| Strike: ATM vs OTM | **~30-delta OTM beat at-the-money over the long run.** Cboe's 30-delta BuyWrite (BXMD) has roughly doubled the ATM BuyWrite (BXM) since 2002, with a better risk-adjusted return; 2% OTM (BXY) sits in between. ATM writing turns the position into mostly premium income with the upside capped | [Nasdaq Dorsey Wright](https://dorseywright.nasdaq.com/research/bigwire/2025/05/27/05-27-2025/optimizing-a-covered-call-strategy) · [Neuberger Berman](https://www.nb.com/-/media/NB/Article-Assets/wp_index_option_writing_strategy_benchmarks.pdf) · [Cboe/Wilshire 1986–2018](https://cdn.cboe.com/resources/spx/wilshire-options-based-benchmark-indexes-2019.pdf) |
+| Return vs holding | Covered calls **trail buy-and-hold in raw return** (BXM ~8.2% vs SPX ~10.5%/yr since 1986) but with **~30% less volatility**. They lag most in strong up years (−4 to −9 pts in simulated 2020–24 tests) | Cboe benchmark data; [S&P DJI](https://www.spglobal.com/spdji/en/documents/research/research-defining-paths-with-options-based-index-strategies.pdf) |
+| What the return is made of | A covered call = **passive equity + short volatility (the edge: implied usually > realized) + an "equity reversal" bet** from the call's changing delta. The reversal piece carries ~¼ of the risk and **earns almost nothing**; hedging it raised Sharpe and cut downside beta at similar return | [Israelov & Nielsen, FAJ 2015 (AQR)](https://papers.ssrn.com/sol3/papers.cfm?abstract_id=2444999) |
+| Strike placement methods | Three practitioner methods, best combined: **delta** (0.15–0.30 ≈ 15–30% assignment odds), **outside the implied expected move** (ATM straddle ≈ 1 SD; it's not a ceiling), and **at chart resistance** at or above the price you'd happily sell | [Schwab](https://www.schwab.com/learn/story/options-strategy-covered-call) · [Volatility Box](https://volatilitybox.com/research/how-to-use-volatility-to-select-covered-call-strikes/) |
+| Tenor | 30-day writing is the index standard (and our 30–45 DTE band). Weeklies collect more total premium (~1.9x four ATM weeklies vs one monthly on SPY) but need more management and give less downside cushion | Nasdaq Dorsey Wright |
+| When to skip | "Naive" writers sell at every expiry, including right after a crash, and miss the recovery. **Skipping calls when the stock is heavily oversold** is the common discretionary fix (our ACCUMULATE/HOLD-WAIT stages and "sell into strength"). No rigorous public backtest of a trend-filter overlay was found: test it ourselves | Nasdaq Dorsey Wright; [OptionsTradingIQ](https://optionstradingiq.com/selling-weekly-covered-calls/) |
+
+**How to simulate it (and what our `cc-backtest.py` gets wrong):**
+- **Gold standard: real historical option chains** (bid/ask, IV per strike) from ORATS, Cboe DataShop or OptionMetrics. Fill at the bid or mid minus slippage, align option and stock timestamps, and handle splits/adjusted contracts.
+- **Model pricing (what we do)** prices calls with Black-Scholes from realized vol × a premium factor. Known biases: **no skew** (equity OTM calls usually carry *lower* IV than ATM, so a flat-vol model tends to *overstate* OTM call premium), no bid/ask, no earnings IV spikes, and an assumed implied/realized ratio that varies by regime. Treat results as *relative* (which stock, which delta), not as an income forecast.
+- **Avoid look-ahead:** choose strikes from information available at the sale date only, never from where the stock ended.
+- **Judge on more than total return:** drawdown, % of 1-year windows that beat holding, rallies vs down years, worst cycle.
+
 ## Management Rules
 
 **Rolled CC check:** If the CC was rolled from a prior position, the brokerage P&L is artificial — it reflects the new premium minus the roll debit, not the true strategy return. Before applying the 50-65% profit rule, verify the P&L is from genuine premium collection, not accounting artifacts from rolls. For rolled CCs, manage based on distance to strike and DTE, not displayed P&L.
