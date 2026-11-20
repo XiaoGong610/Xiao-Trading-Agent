@@ -42,7 +42,8 @@ Use the script's output for IV, price, support/resistance levels, and expiry dat
 - Theta decay curve: where are we on the 90→0 DTE curve?
 
 ## Key Dates (Disqualifiers)
-- Next earnings date — if within 30-45 DTE window, flag as a risk or disqualifier
+- Next earnings date — **for covered calls, earnings before expiry is a disqualifier** (gate 6; backtest: skipping earnings windows added ~+2.5 pts/yr on steady names). For CSPs, flag it as a risk
+- **Covered calls: not oversold** — close above the 20-day average and RSI ≥ 35 (gate 5, "sell into strength"). If it fails, recommend waiting, not a lower-delta call
 - Next ex-dividend date — stock typically drops by dividend amount
 - Any other binary events (FDA, legal rulings, etc.)
 
@@ -175,7 +176,7 @@ Analyze rolling options for the given position. Arguments after `roll`: TICKER C
 
 Use the script's output for current price, support/resistance, and options chain data. Supplement with web search for any additional context needed.
 
-Consult management rules in knowledge/strategies/when-to-csp.md for roll decision criteria (close at 50% profit, roll when tested, cut if thesis breaks).
+Consult management rules in knowledge/strategies/when-to-csp.md for roll decision criteria (close at 50% profit, roll when tested, cut if thesis breaks). For covered calls use `when-to-cc.md` → Management Rules: hold to expiry on steady names; close at 50% on high-vol names or with an event inside the remaining DTE.
 
 ## Current Position Status
 - Current stock price vs. your strike

@@ -99,6 +99,11 @@ class Market:
         self.iv_rank, self.iv_rank_source = self._iv_rank(iv_rank_override)
         self.earnings, self.earnings_source = self._earnings(earnings_override)
         self.supports, self.hvn, self.sma50, self.sma200 = self._levels()
+        close = hist["Close"]
+        self.sma20 = round(float(close.tail(20).mean()), 2)
+        d = close.diff().dropna().tail(14)
+        up, dn = d.clip(lower=0).mean(), (-d.clip(upper=0)).mean()
+        self.rsi14 = round(float(100 - 100 / (1 + up / dn)), 1) if dn > 0 else 100.0
 
     def dte(self, expiry):
         return (datetime.strptime(expiry, "%Y-%m-%d").date() - self.today).days
@@ -296,6 +301,20 @@ def score_cc(m, expiry, row, cost_basis=None):
         gates["4 Strike >= cost basis"] = "PASS" if strike >= cost_basis else "FAIL"
     else:
         gates["4 Happy to sell at strike"] = "CHECK (pass --cost-basis)"
+    # 5-6: backtested rules (cc-backtest.py --mode rules, Nov 2026): skipping oversold entries and
+    # earnings windows each added ~+1.5-3 pts/yr on steady names vs selling every cycle.
+    sma20, rsi14 = getattr(m, "sma20", None), getattr(m, "rsi14", None)
+    if sma20 is None or rsi14 is None:
+        gates["5 Not oversold"] = "CHECK (no SMA20/RSI)"
+    else:
+        gates["5 Not oversold"] = ("PASS" if m.price > sma20 and rsi14 >= 35 else
+                                   f"FAIL (close vs 20-day {m.price - sma20:+.2f}, RSI {rsi14}: wait for strength)")
+    exp_d = datetime.strptime(expiry, "%Y-%m-%d").date()
+    if m.earnings is None:
+        gates["6 No earnings before expiry"] = "CHECK (earnings date unknown)"
+    else:
+        gates["6 No earnings before expiry"] = ("FAIL (earnings inside the trade)"
+                                                if m.today <= m.earnings <= exp_d else "PASS")
     failed = [g for g, v in gates.items() if v.startswith("FAIL")]
     verdict = ("DON'T SELL (gate " + ", ".join(g.split()[0] for g in failed) + " failed)" if failed else
                "SELL CC" if score > 60 else "MARGINAL" if score >= 40 else "DON'T SELL")
@@ -373,6 +392,7 @@ def header(m):
         "iv_rank": m.iv_rank, "iv_rank_source": m.iv_rank_source,
         "earnings": m.earnings.isoformat() if m.earnings else None, "earnings_source": m.earnings_source,
         "supports": m.supports, "volume_shelf": m.hvn, "sma50": m.sma50, "sma200": m.sma200,
+        "sma20": getattr(m, "sma20", None), "rsi14": getattr(m, "rsi14", None),
     }
 
 
@@ -380,7 +400,7 @@ def print_header(h):
     print(f"\n{h['ticker']} ${h['price']}   IV30 {h['iv30']}% ({h['iv30_expiry']})   RV20 {h['rv20']}%   "
           f"IV Rank {h['iv_rank']} [{h['iv_rank_source']}]")
     print(f"  Earnings {h['earnings'] or 'unknown'} [{h['earnings_source']}]   Supports {h['supports']}   "
-          f"Volume shelf ${h['volume_shelf']}   SMA50 ${h['sma50']}   SMA200 ${h['sma200']}")
+          f"Volume shelf ${h['volume_shelf']}   SMA20 ${h['sma20']}   SMA50 ${h['sma50']}   SMA200 ${h['sma200']}   RSI {h['rsi14']}")
     if h["iv_rank_source"].startswith("estimate"):
         print("  IV Rank is an estimate. For a real value pass --iv-rank (e.g. from Barchart); "
               "the daily IV log takes over after 120 days.")

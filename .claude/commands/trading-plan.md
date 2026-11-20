@@ -110,7 +110,7 @@ Specific orders to place this week. Each order must have:
 5. Cleanup (sell no-thesis positions)
 
 **Pre-trade gates:**
-- New CC → verify CC Sharpe > 60: `scripts/option-scores.py TICKER --cc --strike X --expiry D --cost-basis Y`
+- New CC → verify CC Sharpe > 60 **and all 6 gates pass** (incl. gate 5 not oversold, gate 6 no earnings before expiry): `scripts/option-scores.py TICKER --cc --strike X --expiry D --cost-basis Y`. For a stock you'd *buy* to write calls on, run `scripts/cc-check.py TICKER` (stage must be ACCUMULATE, then SELL CALLS once lots are held)
 - New CSP → verify CSP Score > 45: `scripts/option-scores.py TICKER --csp --strike X --expiry D`
 - New entry → verify /plan-stock exists and entry target/stop are set
 - New LEAP → verify the IV Rank < 30 gate: `scripts/option-scores.py TICKER --leap`
@@ -252,7 +252,7 @@ Format:
 ```bash
 .venv/bin/python3 scripts/plan-lint.py
 ```
-Fix every ERROR in the plan and re-run until it exits 0. If the user deliberately overrides a rule (e.g. DCA out of conviction order), add `lint-ok` to that plan line instead. Don't report the plan as checked while errors remain. Still do the non-mechanical gates by hand: harvest scan of sold options (>50% captured) and off-plan positions that contradict conviction.
+Fix every ERROR in the plan and re-run until it exits 0. If the user deliberately overrides a rule (e.g. DCA out of conviction order), add `lint-ok` to that plan line instead. Don't report the plan as checked while errors remain. Still do the non-mechanical gates by hand: harvest scan of sold options (CSPs: close at >50% captured; covered calls: hold to expiry on steady names, close at 50% on high-vol names or with an event inside the DTE; see `when-to-cc.md` → Backtested Rules) and off-plan positions that contradict conviction.
 
 3. **Regenerate the dashboard:**
 ```bash

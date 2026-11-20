@@ -11,7 +11,7 @@ Answers four questions per ticker:
                  best 20–50 DTE, 0.15–0.30-delta call's annualized premium, scored with the
                  CC Sharpe gates from option-scores.py. (>= 15%/yr RICH, 10–15 GOOD, 6–10 THIN.)
   3. SIMULATION  How much extra would selling calls have earned? Buy-write vs buy-hold from
-                 cc-backtest.py since --start: CAGR uplift, premium/yr, how often a rolling
+                 cc-backtest.py since --start, using the playbook rules (skip earnings + oversold): CAGR uplift, premium/yr, how often a rolling
                  1-year window beat holding, and the uplift in up vs down markets.
   Stage (lifecycle): ACCUMULATE to a 100-share lot in an account that allows calls ->
                  HOLD, WAIT while the gates fail -> SELL CALLS. Low conviction or over band = don't add.
@@ -191,8 +191,11 @@ def analyze(ticker, os_mod, ccb, args, basis, fit_ctx, portfolio_value):
 
     research = research_summary(m.ticker)
     try:
-        sim = ccb.simulate_buywrite(ccb.fetch(m.ticker, args.start).values,
-                                    dte=args.sim_dte, delta=args.sim_delta, vrp=args.vrp)
+        px = ccb.fetch(m.ticker, args.start)
+        earn = ccb.earnings_indices(m.ticker, px.index)
+        # Simulate the playbook default (when-to-cc.md -> Backtested Rules): skip earnings + oversold
+        sim = ccb.simulate_buywrite(px.values, dte=args.sim_dte, delta=args.sim_delta, vrp=args.vrp,
+                                    skip_earnings=earn is not None, earnings_idx=earn, skip_oversold=True)
         sim = {k: v for k, v in sim.items() if not k.startswith("_")}
     except Exception as e:  # short history, fetch failure
         sim = {"error": str(e), "cycles": 0}
@@ -231,7 +234,8 @@ def render(results, args):
             out.append(f"               best: ${b['strike']:g}C {b['expiry']} @ ${b['premium']:.2f} · {b['otm_pct']}% OTM · Δ{b['delta']} · "
                        f"{b['ann_yield']}%/yr · score {b['score']} {b['verdict']}")
         if q3.get("cycles"):
-            out.append(f"3. SIMULATION   {q3['verdict']}  · {q3['years']}y, {q3['settings']['delta']}-delta / {q3['settings']['dte']}-day cycles")
+            out.append(f"3. SIMULATION   {q3['verdict']}  · {q3['years']}y, {q3['settings']['delta']}-delta / {q3['settings']['dte']}-day cycles, "
+                       f"playbook rules (skip earnings + oversold), {q3.get('coverage_pct', 0):.0f}% of days covered")
             out.append(f"               CAGR hold {q3['bh_cagr_pct']:+.1f}% vs covered calls {q3['bw_cagr_pct']:+.1f}% "
                        f"(uplift {q3['cagr_uplift_pct']:+.1f} pts/yr) · premium {q3['premium_yield_ann_pct']}%/yr · called {q3['called_pct']:.0f}% of cycles")
             out.append(f"               1-yr windows: beat hold {q3['beat_hold_1y_pct']}% of the time · median {q3['median_1y_uplift_pts']:+} pts · "

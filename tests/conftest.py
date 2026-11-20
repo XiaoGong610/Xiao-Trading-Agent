@@ -22,3 +22,8 @@ def ccb():
 @pytest.fixture(scope="session")
 def ccc():
     return load_script("cc-check.py")
+
+
+@pytest.fixture(scope="session")
+def osc():
+    return load_script("option-scores.py")

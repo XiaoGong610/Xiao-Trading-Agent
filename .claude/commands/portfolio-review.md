@@ -196,7 +196,7 @@ Flag:
 
 ### Options Intelligence (enhanced)
 
-**Uncovered shares → CC Sharpe screen:** For every held stock with 100+ uncovered shares, calculate the CC Sharpe Score with `.venv/bin/python3 scripts/option-scores.py TICKER --cc --cost-basis Y` (method in `knowledge/strategies/when-to-cc.md`). If CC Sharpe > 60, flag: "SELL CC — Sharpe [score]" with suggested delta/DTE. If < 40, note: "CC not justified — premium too thin."
+**Uncovered shares → CC Sharpe screen:** For every held stock with 100+ uncovered shares, calculate the CC Sharpe Score with `.venv/bin/python3 scripts/option-scores.py TICKER --cc --cost-basis Y` (method in `knowledge/strategies/when-to-cc.md`). If CC Sharpe > 60 **and all gates pass**, flag: "SELL CC — Sharpe [score]" with suggested delta/DTE. If gate 5 (oversold) or 6 (earnings before expiry) fails, note "CC: WAIT — [gate]" (backtested: these filters add ~+2–3 pts/yr on steady names). If < 40, note: "CC not justified — premium too thin." For holdings being *built* toward a covered-call lot, show the `scripts/cc-check.py TICKER` stage (ACCUMULATE / HOLD, WAIT / SELL CALLS).
 
 **CSP recommendations → CSP Score gate:** Before recommending "ADD CSP" on any position, calculate the CSP Score (6-component composite: IV Rank, VRP Edge, AnnYield, Buffer %, Support, Earnings Gate) with `.venv/bin/python3 scripts/option-scores.py TICKER --csp` (method in `knowledge/strategies/when-to-csp.md`). If CSP Score < 45, do not recommend — note "CSP Score [X] < 45 — skip." Only recommend CSPs that score > 45.
 

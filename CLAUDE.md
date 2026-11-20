@@ -68,7 +68,9 @@ All skills work independently — `/research-stock`, `/strategy-theta-gang`, `/p
                                     LEAP ≤60% of cash, account option rules, contract math + CC share
                                     coverage, put/call terminology, DCA ∝ conviction, /plan-stock coverage,
                                     expiry dates, full account names). Deliberate exceptions: "lint-ok".
-                                  → Scan ALL active sold options against harvest framework (close if >50% profit captured)
+                                  → Scan ALL active sold options against the harvest framework: CSPs close at >50%
+                                    captured; covered calls hold to expiry on steady names, close at 50% on high-vol
+                                    names or with an event inside the DTE (when-to-cc.md → Backtested Rules)
                                   → Flag off-plan positions that contradict conviction scores
                                   → Regenerate dashboard after any plan edit
 
@@ -472,7 +474,7 @@ Shows per-account: available cash, DCA burn (1 month), limit order costs, LEAP p
 Order tables are found by their columns (an `Account` column plus an `Order` or `Action` column), so section names can change freely. Write buy quantities as `N @ $price` (or `Total ~$X`) so they can be priced. **Exit codes:** 0 OK, 1 an account is over-committed, 2 the plan couldn't be fully parsed (no order rows, an unpriced buy, an unknown account). Treat exit 2 as a failed gate: fix the plan wording and re-run. Don't report "cash OK".
 
 ### `scripts/option-scores.py`
-Computes the CC Sharpe Score (4 gates + composite), the CSP Score (6 components) and the LEAP gate (IV Rank < 30, no earnings within 14 days) from live yfinance data, per `knowledge/strategies/when-to-{cc,csp,leaps}.md`. Scans 0.10–0.35 delta contracts at 20–50 DTE, or scores one contract.
+Computes the CC Sharpe Score (6 gates: IV Rank, yield, IV vs RV, strike ≥ cost, **not oversold** (close > 20-day & RSI ≥ 35), **no earnings before expiry**; plus a composite), the CSP Score (6 components) and the LEAP gate (IV Rank < 30, no earnings within 14 days) from live yfinance data, per `knowledge/strategies/when-to-{cc,csp,leaps}.md`. Scans 0.10–0.35 delta contracts at 20–50 DTE, or scores one contract.
 
 ```bash
 .venv/bin/python3 scripts/option-scores.py TICKER --cc                     # scan calls
@@ -562,16 +564,18 @@ Stages: **ACCUMULATE → HOLD, WAIT → SELL CALLS** (plus OVER BAND / CALLS ON 
 ```
 
 ### `scripts/cc-backtest.py`
-Buy-write vs buy-hold per underlying over history: sells a DELTA call every DTE trading days (Black-Scholes, 30-day realized vol × VRP), settles at intrinsic. Reports CAGR and drawdown for both, premium yield, % called, average cost when called, worst cycle. Model prices, no earnings avoidance: compare names and settings, don't forecast income. `--mode structures` runs the ladder comparison from `cc-ladder-backtest.py` for any tickers.
+Buy-write vs buy-hold per underlying since 2016. Self-financing like Cboe's buy-write indexes (premium buys shares; option losses sell shares), marked to market daily. Pricing: Black-Scholes from 30-day realized vol × VRP, with a call-skew adjustment (`--skew`, default −0.5) and a bid/ask haircut (`--haircut`, default 5%). Testable playbook rules: `--skip-earnings` (needs `lxml`), `--skip-oversold` (close > 20-day & RSI ≥ 35), `--early-close 0.5`. Reports CAGR and drawdown for both, premium/yr, coverage, % called, % of rolling 1-year windows that beat holding, and the uplift in rallies vs down years. Model prices: compare names, settings and rules; don't forecast income. Results feed `when-to-cc.md` → Backtested Rules.
 
 ```bash
-.venv/bin/python3 scripts/cc-backtest.py GOOG AMZN TSLA QQQ                 # 0.20-delta, 30-day cycles since 2016
-.venv/bin/python3 scripts/cc-backtest.py TSLA --delta 0.15 --dte 21 --start 2019-01-01
-.venv/bin/python3 scripts/cc-backtest.py TSLA --mode structures
+.venv/bin/python3 scripts/cc-backtest.py GOOG AMZN TSLA QQQ                 # 0.20-delta, 30-day cycles
+.venv/bin/python3 scripts/cc-backtest.py GOOG --mode grid                   # delta x DTE grid for one stock
+.venv/bin/python3 scripts/cc-backtest.py GOOG AMZN --mode rules             # naive vs each rule vs combined
+.venv/bin/python3 scripts/cc-backtest.py TSLA --delta 0.15 --dte 21 --skip-earnings --skip-oversold
+.venv/bin/python3 scripts/cc-backtest.py TSLA --mode structures             # ladder vs uniform strikes
 ```
 
 ### Tests
-`tests/` (pytest; synthetic data and fake tickers only, since this repo is public). Covers `cc-backtest.py` (delta/strike round trip; buy-write vs hold in flat, rally and crash paths) and `cc-check.py` (fit, sizing, verdicts, lifecycle stage). Run: `.venv/bin/python3 -m pytest -q`. Extending coverage to the other gate scripts, a pre-commit hook and CI is NOTES.md TODO #12.
+`tests/` (pytest; synthetic data and fake tickers only, since this repo is public). Covers `cc-backtest.py` (pricing, skew/haircut, indicators, each rule filter, daily equity; buy-write vs hold in flat, rally and crash paths), `cc-check.py` (fit, sizing, verdicts, lifecycle stage) and `option-scores.py` CC gates 5–6. Run: `.venv/bin/python3 -m pytest -q`. Extending coverage to the other gate scripts, a pre-commit hook and CI is NOTES.md TODO #12.
 
 ### `scripts/cc-ladder-backtest.py`
 Historical backtest comparing covered-call structures on volatile names: 4× uniform strike vs strike ladder vs strike + timing ladder. Results feed the Ladder Rule in `knowledge/strategies/when-to-cc.md`. Uses yfinance + scipy.

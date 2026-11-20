@@ -111,7 +111,8 @@ Verdicts:
 - [ ] IV > 20-day realized volatility (annualized)
 - [ ] Strike above cost basis
 - [ ] Strike at identifiable resistance level
-- [ ] No earnings within DTE window (unless intentional)
+- [ ] **No earnings before expiry** (gate 6; backtest: skipping earnings windows added ~+2.5 pts/yr on steady names)
+- [ ] **Not oversold: close above the 20-day average and RSI ≥ 35** (gate 5; sell into strength)
 - [ ] Liquid options (bid-ask spread < 5% of mid price)
 - [ ] You'd be happy selling shares at the strike price
 - [ ] Position size: don't cover ALL shares — keep 30-40% uncovered for upside
@@ -216,14 +217,28 @@ Treat the direction as reliable and the exact numbers as rough.
 - **Avoid look-ahead:** choose strikes from information available at the sale date only, never from where the stock ended.
 - **Judge on more than total return:** drawdown, % of 1-year windows that beat holding, rallies vs down years, worst cycle.
 
+## Backtested Rules (our `cc-backtest.py --mode rules`, Nov 2026)
+
+Self-financing buy-write since 2016, 0.20-delta / 30-trading-day calls, skew −0.5, 5% bid/ask haircut, model prices. CAGR uplift vs buy-and-hold, in points per year:
+
+| Rule set | GOOG | AMZN | TSLA | QQQ | What it does |
+|---|---|---|---|---|---|
+| Naive (sell every cycle) | −0.4 | −0.1 | −14.6 | +2.0 | Baseline |
+| + skip earnings windows | +2.4 | +2.6 | −7.5 | — | Biggest single improvement on stocks |
+| + skip oversold (close < 20-day or RSI < 35) | +1.6 | +2.7 | −10.2 | — | "Sell into strength" |
+| **Skip earnings + oversold** | **+1.7** | **+3.1** | **−7.2** | **+3.3** | **Default rule set.** Beat holding in 70–85% of 1-year windows (naive: 50–64%); turns the rally penalty positive on steady names |
+| + early close at 50% | −2.5 | +0.1 | −12.6 | — | Lower return on steady names, but smaller drawdowns (GOOG −39% → −34%, AMZN −48% → −42%) |
+
+Readings: (1) **earnings and oversold filters are worth enforcing**: they are hard gates 5–6 in `option-scores.py`. (2) **Early profit-taking costs return on steady names** (matches ORATS): hold to expiry by default; use the 50% close where drawdown/gap risk matters more (high-vol names, an event inside the remaining DTE, or ≥50% captured with ≥14 DTE left so the call can be re-sold higher). (3) **Momentum names (TSLA-like) lose with covered calls under every rule set**: calls there are a deliberate trim/hedge tool at far-OTM strikes, not an income engine. Model prices overstate nothing systematically after skew + haircut, but treat these as *relative* results.
+
 ## Management Rules
 
 **Rolled CC check:** If the CC was rolled from a prior position, the brokerage P&L is artificial — it reflects the new premium minus the roll debit, not the true strategy return. Before applying the 50-65% profit rule, verify the P&L is from genuine premium collection, not accounting artifacts from rolls. For rolled CCs, manage based on distance to strike and DTE, not displayed P&L.
 
 | Scenario | Action |
 |----------|--------|
-| Hit 50% of max profit (genuine, not rolled) | **Close.** Re-sell at a better strike/expiry if setup still valid. |
-| Hit 65% of max profit (genuine, not rolled) | **Close.** Remaining premium isn't worth the risk. |
+| Hit 50% of max profit, **steady name, no event left in the DTE** | **Default: hold to expiry** (backtest: early closes cost ~2.5 pts/yr on GOOG-type names). Exception: ≥ 50% captured with ≥ 14 DTE left and a valid new setup → close and re-sell higher |
+| Hit 50–65% of max profit, **high-vol name or an event inside the remaining DTE** | **Close.** Drawdown/gap protection is worth more than the last premium |
 | Stock approaches strike (within 2%) | **Roll up and out** — higher strike, extend 30 days. Only if you want to keep shares. |
 | Stock blows through strike | Close for a loss OR let shares get called away if you're happy with the exit price. |
 | Near expiration, stock well below strike | Let expire worthless or close for pennies. |

@@ -12,6 +12,8 @@ Unified exit and profit-taking logic for all position types. Different instrumen
 
 **Logic:** You sold time decay for premium. Once most decay is captured, close and redeploy capital.
 
+**Covered calls differ (backtested Nov 2026, `when-to-cc.md` → Backtested Rules):** on steady names, closing CCs early at 50% *lowered* return (~−2.5 pts/yr on GOOG) while cutting drawdowns. Default for CCs on steady names: **hold to expiry**; apply the matrix below to CCs only on high-vol names, with an event inside the remaining DTE, or when ≥ 50% is captured with ≥ 14 DTE left and a valid re-sell exists. The matrix applies in full to CSPs (not separately tested).
+
 ### Profit-Taking Matrix
 
 | Profit Captured | Time Elapsed | Action |

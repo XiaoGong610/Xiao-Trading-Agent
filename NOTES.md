@@ -376,7 +376,8 @@ Goal: deterministic checks around the LLM workflow (validate inputs, score execu
 
 **Built 2026-11-20 (tests-first start):**
 - [x] `scripts/cc-check.py` (single-stock: conviction, volatility, simulation, sizing, lifecycle stage) + `scripts/cc-backtest.py`, wired into `/strategy-theta-gang cc-check` and `compare`
-- [x] `tests/` with pytest (12 tests, synthetic data/fake tickers); `pytest` added to `requirements.txt`. Still TODO: tests for account-check / execution-diff / plan-lint, pre-commit hook, CI
+- [x] Nov 20 (later): cc-backtest v2 (self-financing, daily MTM, skew + bid/ask haircut, rule filters, grid/rules modes); option-scores CC gates 5 (not oversold) and 6 (no earnings before expiry); option-selling skills cross-checked and updated
+- [x] `tests/` with pytest (22 tests, synthetic data/fake tickers); `pytest` added to `requirements.txt`. Still TODO: tests for account-check / execution-diff / plan-lint, pre-commit hook, CI
 
 **Housekeeping:**
 - [ ] `.venv/bin/pip` launcher points at an old path (`xiao-trading-strategies/.venv`); recreate it or use `python3 -m pip`

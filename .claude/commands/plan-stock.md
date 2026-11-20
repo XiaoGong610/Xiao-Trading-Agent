@@ -170,7 +170,7 @@ With sector momentum context AND strategy outputs in hand, pick the best fit:
 | Timing | At support → Buy & Hold. Uncertain → DCA. Pre-earnings → Wait |
 | Options liquidity | Illiquid or unavailable → stock-based strategies only |
 | Growth profile | Compounder → Buy & Hold/DCA. Range-bound → Theta Gang |
-| User's position | Already owns shares? → CC or add via DCA. No position → CSP or Buy & Hold |
+| User's position | Already owns shares? → CC or add via DCA. No position → CSP or Buy & Hold. **Hold + covered-call candidate?** Run `scripts/cc-check.py TICKER`: conviction, premium, buy-write simulation, sizing (lots in the conviction band) and stage; plan the accumulation to whole lots, then the call-start conditions (gates 5–6 pass: not oversold, no earnings before expiry) |
 
 Consult `knowledge/strategies/when-to-csp.md` and `knowledge/strategies/when-to-leaps.md` to validate that the stock meets the ideal setup checklist for the recommended strategy.
 
